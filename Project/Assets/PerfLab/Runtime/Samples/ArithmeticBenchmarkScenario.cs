@@ -10,6 +10,8 @@ namespace PerfLab.Samples
 
         public string Name => "Harness-Arithmetic-Calibration";
 
+        public BenchmarkMeasurementMode MeasurementMode => BenchmarkMeasurementMode.MeasuredStep;
+
         public void Setup(BenchmarkConfiguration configuration)
         {
             _operations = configuration.operationsPerStep;

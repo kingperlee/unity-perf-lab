@@ -8,4 +8,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/PerfLab/Scenes/BenchmarkHarnessDemo.unity
     guid: a87ed2fc6f5943929c69ecbd487283f7
+  - enabled: 1
+    path: Assets/PerfLab/Scenes/UpdateDispatchDemo.unity
+    guid: 8902dd042d0247ada65850524683bc72
   m_configObjects: {}

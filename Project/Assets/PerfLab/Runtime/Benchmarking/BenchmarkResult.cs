@@ -6,6 +6,7 @@ namespace PerfLab.Benchmarking
     public sealed class BenchmarkResult
     {
         public string scenario;
+        public string measurementMode;
         public string utcTimestamp;
         public BenchmarkConfiguration configuration;
         public BenchmarkEnvironment environment;

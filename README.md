@@ -23,6 +23,17 @@ Setup → Warmup（不记录）→ Sampling → Statistics → Cleanup → Expor
 
 `ArithmeticBenchmarkScenario` 是用于验证框架流程的校准负载，不代表真实性能优化结论。
 
+## 实验 01：Update 分发规模曲线
+
+打开 `Assets/PerfLab/Scenes/UpdateDispatchDemo.unity`：
+
+- `1`：每个对象通过自己的 `MonoBehaviour.Update` 执行一次相同计算；
+- `2`：只有一个管理器接收 `Update`，再顺序遍历所有对象；
+- `[` / `]`：在 1,000、5,000、10,000、20,000 个对象之间切换；
+- `E`：导出上一次结果。
+
+两种模式具有相同数量的 GameObject、组件和计算步骤。Harness 隐藏采样期 IMGUI，预热 120 帧并采样 300 帧，记录相邻帧间隔及每帧 GC。请先后运行两种模式并比较相同对象数量下的 P50/P95/P99；Frame Interval 代表玩家感受到的帧间时长，不等于被测 Update 的独占 CPU 时间。Editor 结果只用于学习，最终结论应由目标设备 Development Build 复核。
+
 ## 运行
 
 1. 用 Unity Hub 打开 `Project` 目录。

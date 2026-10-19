@@ -1,9 +1,11 @@
 using System;
 using System.Diagnostics;
+using Unity.Profiling;
 using UnityEngine;
 
 namespace PerfLab.Benchmarking
 {
+    [DefaultExecutionOrder(10000)]
     public sealed class BenchmarkHarness : MonoBehaviour
     {
         private IBenchmarkScenario _scenario;
@@ -13,6 +15,7 @@ namespace PerfLab.Benchmarking
         private int _completedWarmupFrames;
         private int _completedSampleFrames;
         private bool _cleanupAttempted;
+        private ProfilerRecorder _frameGcAllocated;
 
         public BenchmarkState State { get; private set; } = BenchmarkState.Idle;
         public BenchmarkResult LastResult { get; private set; }
@@ -50,6 +53,13 @@ namespace PerfLab.Benchmarking
             {
                 State = BenchmarkState.SettingUp;
                 _scenario.Setup(_configuration);
+                if (_scenario.MeasurementMode == BenchmarkMeasurementMode.FrameInterval)
+                {
+                    _frameGcAllocated = ProfilerRecorder.StartNew(
+                        ProfilerCategory.Memory,
+                        "GC Allocated In Frame",
+                        2);
+                }
                 State = _configuration.warmupFrames > 0
                     ? BenchmarkState.WarmingUp
                     : BenchmarkState.Sampling;
@@ -93,11 +103,22 @@ namespace PerfLab.Benchmarking
         {
             try
             {
-                long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
-                long startedAt = Stopwatch.GetTimestamp();
-                _scenario.ExecuteStep();
-                long elapsed = Stopwatch.GetTimestamp() - startedAt;
-                long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+                long elapsed;
+                long allocated;
+                if (_scenario.MeasurementMode == BenchmarkMeasurementMode.FrameInterval)
+                {
+                    _scenario.ExecuteStep();
+                    elapsed = (long)(Time.unscaledDeltaTime * Stopwatch.Frequency);
+                    allocated = _frameGcAllocated.Valid ? _frameGcAllocated.LastValue : 0L;
+                }
+                else
+                {
+                    long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+                    long startedAt = Stopwatch.GetTimestamp();
+                    _scenario.ExecuteStep();
+                    elapsed = Stopwatch.GetTimestamp() - startedAt;
+                    allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+                }
 
                 _elapsedTicks[_completedSampleFrames] = elapsed;
                 _allocatedBytes[_completedSampleFrames] = allocated;
@@ -121,6 +142,7 @@ namespace PerfLab.Benchmarking
                 LastResult = new BenchmarkResult
                 {
                     scenario = _scenario.Name,
+                    measurementMode = _scenario.MeasurementMode.ToString(),
                     utcTimestamp = DateTime.UtcNow.ToString("O"),
                     configuration = _configuration,
                     environment = CaptureEnvironment(),
@@ -168,6 +190,7 @@ namespace PerfLab.Benchmarking
         {
             if (_cleanupAttempted) return;
             _cleanupAttempted = true;
+            if (_frameGcAllocated.Valid) _frameGcAllocated.Dispose();
             _scenario?.Cleanup();
         }
 

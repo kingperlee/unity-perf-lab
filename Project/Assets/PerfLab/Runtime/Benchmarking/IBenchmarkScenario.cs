@@ -4,6 +4,8 @@ namespace PerfLab.Benchmarking
     {
         string Name { get; }
 
+        BenchmarkMeasurementMode MeasurementMode { get; }
+
         void Setup(BenchmarkConfiguration configuration);
 
         void ExecuteStep();

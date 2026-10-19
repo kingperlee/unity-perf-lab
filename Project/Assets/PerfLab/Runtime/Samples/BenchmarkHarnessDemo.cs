@@ -42,6 +42,8 @@ namespace PerfLab.Samples
                 var allocation = _harness.LastResult.allocatedBytes;
                 GUILayout.Label($"Work P50/P95/P99: {timing.p50:F4} / {timing.p95:F4} / {timing.p99:F4} ms", _gui.Label);
                 GUILayout.Label($"Allocated P50/P95/P99: {allocation.p50:F0} / {allocation.p95:F0} / {allocation.p99:F0} bytes", _gui.Label);
+                GUILayout.Label("Allocation source: " + _harness.LastResult.allocationMeasurement, _gui.Label);
+                GUILayout.Label("Allocation probe delta: " + _harness.LastResult.allocationProbeDelta + " bytes", _gui.Label);
             }
             if (!string.IsNullOrEmpty(_exportStatus)) GUILayout.Label(_exportStatus, _gui.Label);
             GUILayout.EndArea();
@@ -49,7 +51,8 @@ namespace PerfLab.Samples
 
         private bool IsRunning()
         {
-            return _harness.State == BenchmarkState.SettingUp ||
+            return _harness.State == BenchmarkState.Calibrating ||
+                   _harness.State == BenchmarkState.SettingUp ||
                    _harness.State == BenchmarkState.WarmingUp ||
                    _harness.State == BenchmarkState.Sampling ||
                    _harness.State == BenchmarkState.Finalizing;

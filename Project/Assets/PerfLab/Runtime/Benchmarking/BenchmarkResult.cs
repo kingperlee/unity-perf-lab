@@ -7,10 +7,16 @@ namespace PerfLab.Benchmarking
     {
         public string scenario;
         public string measurementMode;
+        public string allocationMeasurement;
+        public long allocationProbeBefore;
+        public long allocationProbeAfter;
+        public long allocationProbeDelta;
         public string utcTimestamp;
         public BenchmarkConfiguration configuration;
         public BenchmarkEnvironment environment;
         public BenchmarkDistribution elapsedMilliseconds;
+        public BenchmarkDistribution rawAllocatedBytes;
+        public BenchmarkDistribution allocationBaselineBytes;
         public BenchmarkDistribution allocatedBytes;
     }
 

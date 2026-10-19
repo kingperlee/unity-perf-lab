@@ -12,10 +12,18 @@ namespace PerfLab.Benchmarking
         private BenchmarkConfiguration _configuration;
         private long[] _elapsedTicks;
         private long[] _allocatedBytes;
+        private long[] _allocationBaselineBytes;
         private int _completedWarmupFrames;
         private int _completedSampleFrames;
+        private int _completedBaselineWarmupFrames;
+        private int _completedBaselineFrames;
         private bool _cleanupAttempted;
+        private bool _scenarioSetupAttempted;
         private ProfilerRecorder _frameGcAllocated;
+        private bool _currentThreadAllocationSupported;
+        private byte[] _allocationCounterProbe;
+        private long _allocationProbeBefore;
+        private long _allocationProbeAfter;
 
         public BenchmarkState State { get; private set; } = BenchmarkState.Idle;
         public BenchmarkResult LastResult { get; private set; }
@@ -24,7 +32,7 @@ namespace PerfLab.Benchmarking
 
         public void Run(IBenchmarkScenario scenario, BenchmarkConfiguration configuration)
         {
-            if (State == BenchmarkState.SettingUp || State == BenchmarkState.WarmingUp ||
+            if (State == BenchmarkState.Calibrating || State == BenchmarkState.SettingUp || State == BenchmarkState.WarmingUp ||
                 State == BenchmarkState.Sampling || State == BenchmarkState.Finalizing)
             {
                 throw new InvalidOperationException("A benchmark is already running.");
@@ -37,32 +45,44 @@ namespace PerfLab.Benchmarking
             _configuration = new BenchmarkConfiguration
             {
                 warmupFrames = configuration.warmupFrames,
+                allocationBaselineWarmupFrames =
+                    configuration.allocationBaselineWarmupFrames,
+                allocationBaselineFrames = configuration.allocationBaselineFrames,
                 sampleFrames = configuration.sampleFrames,
                 operationsPerStep = configuration.operationsPerStep,
                 randomSeed = configuration.randomSeed
             };
             _elapsedTicks = new long[_configuration.sampleFrames];
             _allocatedBytes = new long[_configuration.sampleFrames];
+            _allocationBaselineBytes = null;
             _completedWarmupFrames = 0;
             _completedSampleFrames = 0;
+            _completedBaselineWarmupFrames = 0;
+            _completedBaselineFrames = 0;
             _cleanupAttempted = false;
+            _scenarioSetupAttempted = false;
             LastResult = null;
             LastFailure = null;
 
             try
             {
-                State = BenchmarkState.SettingUp;
-                _scenario.Setup(_configuration);
-                if (_scenario.MeasurementMode == BenchmarkMeasurementMode.FrameInterval)
+                _currentThreadAllocationSupported = ProbeCurrentThreadAllocationCounter();
+                _frameGcAllocated = ProfilerRecorder.StartNew(
+                    ProfilerCategory.Memory,
+                    "GC Allocated In Frame",
+                    2);
+                if (UsesFrameAllocationMeasurement() &&
+                    _frameGcAllocated.Valid &&
+                    _configuration.allocationBaselineFrames > 0)
                 {
-                    _frameGcAllocated = ProfilerRecorder.StartNew(
-                        ProfilerCategory.Memory,
-                        "GC Allocated In Frame",
-                        2);
+                    _allocationBaselineBytes =
+                        new long[_configuration.allocationBaselineFrames];
+                    State = BenchmarkState.Calibrating;
                 }
-                State = _configuration.warmupFrames > 0
-                    ? BenchmarkState.WarmingUp
-                    : BenchmarkState.Sampling;
+                else
+                {
+                    SetupScenario();
+                }
             }
             catch (Exception exception)
             {
@@ -72,7 +92,11 @@ namespace PerfLab.Benchmarking
 
         private void Update()
         {
-            if (State == BenchmarkState.WarmingUp)
+            if (State == BenchmarkState.Calibrating)
+            {
+                CaptureAllocationBaseline();
+            }
+            else if (State == BenchmarkState.WarmingUp)
             {
                 ExecuteWarmup();
             }
@@ -80,6 +104,41 @@ namespace PerfLab.Benchmarking
             {
                 ExecuteSample();
             }
+        }
+
+        private void CaptureAllocationBaseline()
+        {
+            if (_completedBaselineWarmupFrames <
+                _configuration.allocationBaselineWarmupFrames)
+            {
+                _completedBaselineWarmupFrames++;
+                return;
+            }
+
+            _allocationBaselineBytes[_completedBaselineFrames] =
+                _frameGcAllocated.LastValue;
+            _completedBaselineFrames++;
+            if (_completedBaselineFrames >= _allocationBaselineBytes.Length)
+            {
+                try
+                {
+                    SetupScenario();
+                }
+                catch (Exception exception)
+                {
+                    Fail(exception);
+                }
+            }
+        }
+
+        private void SetupScenario()
+        {
+            State = BenchmarkState.SettingUp;
+            _scenarioSetupAttempted = true;
+            _scenario.Setup(_configuration);
+            State = _configuration.warmupFrames > 0
+                ? BenchmarkState.WarmingUp
+                : BenchmarkState.Sampling;
         }
 
         private void ExecuteWarmup()
@@ -113,11 +172,23 @@ namespace PerfLab.Benchmarking
                 }
                 else
                 {
-                    long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
-                    long startedAt = Stopwatch.GetTimestamp();
-                    _scenario.ExecuteStep();
-                    elapsed = Stopwatch.GetTimestamp() - startedAt;
-                    allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+                    if (_currentThreadAllocationSupported)
+                    {
+                        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+                        long startedAt = Stopwatch.GetTimestamp();
+                        _scenario.ExecuteStep();
+                        elapsed = Stopwatch.GetTimestamp() - startedAt;
+                        allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+                    }
+                    else
+                    {
+                        long startedAt = Stopwatch.GetTimestamp();
+                        _scenario.ExecuteStep();
+                        elapsed = Stopwatch.GetTimestamp() - startedAt;
+                        allocated = _frameGcAllocated.Valid
+                            ? _frameGcAllocated.LastValue
+                            : 0L;
+                    }
                 }
 
                 _elapsedTicks[_completedSampleFrames] = elapsed;
@@ -139,17 +210,29 @@ namespace PerfLab.Benchmarking
             State = BenchmarkState.Finalizing;
             try
             {
+                BenchmarkDistribution rawAllocation =
+                    BenchmarkStatistics.Create(_allocatedBytes, 1d);
+                BenchmarkDistribution baselineAllocation =
+                    CreateAllocationBaselineDistribution();
+                long[] correctedAllocation = CreateCorrectedAllocationSamples(
+                    baselineAllocation.p50);
                 LastResult = new BenchmarkResult
                 {
                     scenario = _scenario.Name,
                     measurementMode = _scenario.MeasurementMode.ToString(),
+                    allocationMeasurement = GetAllocationMeasurementName(),
+                    allocationProbeBefore = _allocationProbeBefore,
+                    allocationProbeAfter = _allocationProbeAfter,
+                    allocationProbeDelta = _allocationProbeAfter - _allocationProbeBefore,
                     utcTimestamp = DateTime.UtcNow.ToString("O"),
                     configuration = _configuration,
                     environment = CaptureEnvironment(),
                     elapsedMilliseconds = BenchmarkStatistics.Create(
                         _elapsedTicks,
                         1000d / Stopwatch.Frequency),
-                    allocatedBytes = BenchmarkStatistics.Create(_allocatedBytes, 1d)
+                    rawAllocatedBytes = rawAllocation,
+                    allocationBaselineBytes = baselineAllocation,
+                    allocatedBytes = BenchmarkStatistics.Create(correctedAllocation, 1d)
                 };
                 CleanupOnce();
                 State = BenchmarkState.Completed;
@@ -178,7 +261,7 @@ namespace PerfLab.Benchmarking
 
         private void OnDestroy()
         {
-            if (State == BenchmarkState.SettingUp || State == BenchmarkState.WarmingUp ||
+            if (State == BenchmarkState.Calibrating || State == BenchmarkState.SettingUp || State == BenchmarkState.WarmingUp ||
                 State == BenchmarkState.Sampling || State == BenchmarkState.Finalizing)
             {
                 try { CleanupOnce(); }
@@ -191,7 +274,56 @@ namespace PerfLab.Benchmarking
             if (_cleanupAttempted) return;
             _cleanupAttempted = true;
             if (_frameGcAllocated.Valid) _frameGcAllocated.Dispose();
-            _scenario?.Cleanup();
+            _allocationCounterProbe = null;
+            if (_scenarioSetupAttempted) _scenario?.Cleanup();
+        }
+
+        private bool ProbeCurrentThreadAllocationCounter()
+        {
+            _allocationProbeBefore = GC.GetAllocatedBytesForCurrentThread();
+            _allocationCounterProbe = new byte[1024];
+            _allocationProbeAfter = GC.GetAllocatedBytesForCurrentThread();
+            return _allocationProbeAfter > _allocationProbeBefore;
+        }
+
+        private string GetAllocationMeasurementName()
+        {
+            if (_scenario.MeasurementMode == BenchmarkMeasurementMode.MeasuredStep &&
+                _currentThreadAllocationSupported)
+            {
+                return "CurrentThreadAllocatedBytes";
+            }
+
+            return _frameGcAllocated.Valid
+                ? "FrameGcProfilerRecorder"
+                : "Unavailable";
+        }
+
+        private bool UsesFrameAllocationMeasurement()
+        {
+            return _scenario.MeasurementMode == BenchmarkMeasurementMode.FrameInterval ||
+                   !_currentThreadAllocationSupported;
+        }
+
+        private BenchmarkDistribution CreateAllocationBaselineDistribution()
+        {
+            if (_allocationBaselineBytes != null && _allocationBaselineBytes.Length > 0)
+            {
+                return BenchmarkStatistics.Create(_allocationBaselineBytes, 1d);
+            }
+
+            return new BenchmarkDistribution();
+        }
+
+        private long[] CreateCorrectedAllocationSamples(double baselineP50)
+        {
+            var corrected = new long[_allocatedBytes.Length];
+            long baseline = (long)Math.Round(baselineP50);
+            for (var i = 0; i < _allocatedBytes.Length; i++)
+            {
+                corrected[i] = Math.Max(0L, _allocatedBytes[i] - baseline);
+            }
+            return corrected;
         }
 
         private static BenchmarkEnvironment CaptureEnvironment()

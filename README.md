@@ -34,6 +34,22 @@ Setup → Warmup（不记录）→ Sampling → Statistics → Cleanup → Expor
 
 两种模式具有相同数量的 GameObject、组件和计算步骤。Harness 隐藏采样期 IMGUI，预热 120 帧并采样 300 帧，记录相邻帧间隔及每帧 GC。请先后运行两种模式并比较相同对象数量下的 P50/P95/P99；Frame Interval 代表玩家感受到的帧间时长，不等于被测 Update 的独占 CPU 时间。Editor 结果只用于学习，最终结论应由目标设备 Development Build 复核。
 
+## 实验 02：托管分配来源
+
+打开 `Assets/PerfLab/Scenes/GcAllocationDemo.unity`：
+
+- `0`：普通循环零分配基线；
+- `1`：值类型装箱；
+- `2`：每次迭代创建捕获闭包；
+- `3`：LINQ Where/Select/Sum 管线；
+- `4`：循环构造字符串；
+- `[` / `]`：切换每个样本执行 100、1,000 或 10,000 次操作；
+- `E`：导出上一次结果。
+
+该实验使用 `MeasuredStep`：Stopwatch 只包围被测方法。Harness 会先探测当前运行时是否支持 `GC.GetAllocatedBytesForCurrentThread`；支持时记录精确的方法内当前线程分配，不支持时退回 Unity 的 `GC Allocated In Frame`。退回时先丢弃 10 个 Recorder 基线预热帧，再采集 30 个空负载基线帧；JSON 同时保存 `rawAllocatedBytes`、`allocationBaselineBytes` 和扣除基线后的 `allocatedBytes`，不会丢失原始证据。界面及 JSON 还会记录计数器来源和三个原始探测值。不同案例用于定位各自的分配来源，不应把它们的耗时视为完全相同业务工作的横向排名。
+
+正式结果采集 300 个样本。P50 表示典型值，P95 表示 95% 样本不超过该值，P99 用于观察最慢或分配最高的尾部 1%；百分位使用线性插值，所以字节统计也可能显示小数。
+
 ## 运行
 
 1. 用 Unity Hub 打开 `Project` 目录。

@@ -50,6 +50,19 @@ Setup → Warmup（不记录）→ Sampling → Statistics → Cleanup → Expor
 
 正式结果采集 300 个样本。P50 表示典型值，P95 表示 95% 样本不超过该值，P99 用于观察最慢或分配最高的尾部 1%；百分位使用线性插值，所以字节统计也可能显示小数。
 
+## 实验 03：Physics 查询与 NonAlloc
+
+打开 `Assets/PerfLab/Scenes/PhysicsQueryDemo.unity`：
+
+- `0`：只返回最近命中的 `Physics.Raycast`；
+- `1` / `2`：比较 `RaycastAll` 与预分配缓冲区的 `RaycastNonAlloc`；
+- `3` / `4`：比较 `OverlapSphere` 与预分配缓冲区的 `OverlapSphereNonAlloc`；
+- 左右方括号：切换每个样本执行 100、500 或 1,000 次查询；
+- `M`：切换查询所有层或仅查询目标层；
+- `E`：导出结果。
+
+场景为每种模式创建相同的 256 个 BoxCollider，其中一半位于目标层、一半作为干扰层。NonAlloc 缓冲区容量大于最大可能命中数，避免结果截断伪装成性能提升。所有查询都会累计命中数，防止无消费结果的无效比较。
+
 ## 运行
 
 1. 用 Unity Hub 打开 `Project` 目录。

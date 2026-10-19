@@ -17,4 +17,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/PerfLab/Scenes/PhysicsQueryDemo.unity
     guid: b2db540e70b54ce0bcc3b8514163ce5c
+  - enabled: 1
+    path: Assets/PerfLab/Scenes/JobsBurstDemo.unity
+    guid: e9bd985a18494ccb89cef1e24e58029f
   m_configObjects: {}

@@ -119,6 +119,8 @@ Setup → Warmup（不记录）→ Sampling → Statistics → Cleanup → Expor
 
 每个测试仍导出独立 JSON，结束后额外生成 `*-suite-summary.json`，记录场景名称、P50/P95/P99、预算状态、结果路径和异常信息。Editor 输出到 `Project/BenchmarkResults`，Player 输出到 `Application.persistentDataPath/Benchmarks`。当前清单用于建立统一运行入口，并未预置目标设备预算；在不同设备上获得稳定基线后，再为相应设备档位填写阈值。
 
+在相同 Editor 环境连续运行清单至少两次后，可以使用 `PerfLab > Benchmarks > Compare Latest Suite Summaries` 对比最近两份汇总。工具输出各场景 P50/P95/P99 的相对变化百分比；Unity 版本、平台、CPU、GPU/API、分辨率或画质不一致时，报告会标记为不可比较，避免把设备差异误判成代码回归。当前比较器只报告变化，不使用任意百分比自动判失败。
+
 ## 目录
 
 ```text

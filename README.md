@@ -113,6 +113,12 @@ Setup → Warmup（不记录）→ Sampling → Statistics → Cleanup → Expor
 
 预算应按目标平台、设备档位、画质和测试场景分别制定。例如 60 FPS 的整帧总预算约为 16.67 ms，但单个系统只能使用其中一部分；`MeasuredStep` 的方法耗时也不能直接拿整帧预算套用。下一步将在同环境基线对比和批处理运行器中使用这些判定结果。
 
+### 自动测试清单
+
+打开 `Assets/PerfLab/Scenes/AutomatedBenchmarkSuite.unity`，在 Editor 中按 `Space`，即可顺序运行一组固定规模的 Update、GC、Physics、Jobs/Burst 和纹理测试。Player 加载该场景时会自动开始，也可以使用 `-benchmarkAutoRun` 命令行标记明确启用自动运行。
+
+每个测试仍导出独立 JSON，结束后额外生成 `*-suite-summary.json`，记录场景名称、P50/P95/P99、预算状态、结果路径和异常信息。Editor 输出到 `Project/BenchmarkResults`，Player 输出到 `Application.persistentDataPath/Benchmarks`。当前清单用于建立统一运行入口，并未预置目标设备预算；在不同设备上获得稳定基线后，再为相应设备档位填写阈值。
+
 ## 目录
 
 ```text

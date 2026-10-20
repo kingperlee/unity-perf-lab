@@ -23,4 +23,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/PerfLab/Scenes/TextureUploadDemo.unity
     guid: 53db5cfd9c4340798c5a08a077d69418
+  - enabled: 1
+    path: Assets/PerfLab/Scenes/AutomatedBenchmarkSuite.unity
+    guid: b498e47a3734478187e1c320a0e12f6a
   m_configObjects: {}

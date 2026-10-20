@@ -123,6 +123,8 @@ Setup → Warmup（不记录）→ Sampling → Statistics → Cleanup → Expor
 
 自动化环境启动 Benchmark Player 时可以附加 `-benchmarkAutoRun -benchmarkQuit`。清单写完所有独立结果和汇总后会自动退出：退出码 `0` 表示所有场景执行成功且已配置预算均通过，退出码 `2` 表示执行失败或预算超标。只传 `-benchmarkAutoRun` 或普通手动启动不会因测试结束而关闭 Player。
 
+使用 `PerfLab > Benchmarks > Build Benchmark Player` 可以为当前激活平台构建只包含自动清单场景的 Player。批处理环境使用 `-executeMethod PerfLab.Editor.BenchmarkPlayerBuild.BuildFromCommandLine`；可通过 `-benchmarkBuildPath <path>` 指定输出，通过 `-benchmarkDevelopmentBuild` 显式生成 Development Build。默认生成非 Development 构建，避免 Profiler 和调试功能干扰正式基线。
+
 ## 目录
 
 ```text

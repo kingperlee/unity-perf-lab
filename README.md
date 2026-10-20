@@ -107,6 +107,12 @@ Setup → Warmup（不记录）→ Sampling → Statistics → Cleanup → Expor
 6. 资源加载、GPU 上传与单帧尖峰
 7. 真机采样、性能预算与自动回归
 
+## 性能预算与回归判定
+
+`BenchmarkConfiguration.budget` 可以为一次基准配置可选的 P50、P95、P99 毫秒上限及 P95 托管分配上限。Harness 在统计完成后把 `budgetEvaluation.configured`、`passed` 和逐项 `failures` 写入 JSON。所有上限默认值为 `-1`，表示不参与判定；未配置预算的结果仍然是有效测量，但不会被武断地标记为失败。
+
+预算应按目标平台、设备档位、画质和测试场景分别制定。例如 60 FPS 的整帧总预算约为 16.67 ms，但单个系统只能使用其中一部分；`MeasuredStep` 的方法耗时也不能直接拿整帧预算套用。下一步将在同环境基线对比和批处理运行器中使用这些判定结果。
+
 ## 目录
 
 ```text

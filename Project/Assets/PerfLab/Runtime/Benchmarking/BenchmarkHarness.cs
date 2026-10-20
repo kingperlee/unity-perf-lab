@@ -50,7 +50,8 @@ namespace PerfLab.Benchmarking
                 allocationBaselineFrames = configuration.allocationBaselineFrames,
                 sampleFrames = configuration.sampleFrames,
                 operationsPerStep = configuration.operationsPerStep,
-                randomSeed = configuration.randomSeed
+                randomSeed = configuration.randomSeed,
+                budget = configuration.budget.Clone()
             };
             _elapsedTicks = new long[_configuration.sampleFrames];
             _allocatedBytes = new long[_configuration.sampleFrames];
@@ -216,6 +217,12 @@ namespace PerfLab.Benchmarking
                     CreateAllocationBaselineDistribution();
                 long[] correctedAllocation = CreateCorrectedAllocationSamples(
                     baselineAllocation.p50);
+                BenchmarkDistribution elapsedMilliseconds = BenchmarkStatistics.Create(
+                    _elapsedTicks,
+                    1000d / Stopwatch.Frequency);
+                BenchmarkDistribution allocatedBytes = BenchmarkStatistics.Create(
+                    correctedAllocation,
+                    1d);
                 LastResult = new BenchmarkResult
                 {
                     scenario = _scenario.Name,
@@ -227,12 +234,14 @@ namespace PerfLab.Benchmarking
                     utcTimestamp = DateTime.UtcNow.ToString("O"),
                     configuration = _configuration,
                     environment = CaptureEnvironment(),
-                    elapsedMilliseconds = BenchmarkStatistics.Create(
-                        _elapsedTicks,
-                        1000d / Stopwatch.Frequency),
+                    elapsedMilliseconds = elapsedMilliseconds,
                     rawAllocatedBytes = rawAllocation,
                     allocationBaselineBytes = baselineAllocation,
-                    allocatedBytes = BenchmarkStatistics.Create(correctedAllocation, 1d)
+                    allocatedBytes = allocatedBytes,
+                    budgetEvaluation = BenchmarkBudgetEvaluator.Evaluate(
+                        _configuration.budget,
+                        elapsedMilliseconds,
+                        allocatedBytes)
                 };
                 CleanupOnce();
                 State = BenchmarkState.Completed;

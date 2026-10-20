@@ -18,6 +18,7 @@ namespace PerfLab.Benchmarking
         public BenchmarkDistribution rawAllocatedBytes;
         public BenchmarkDistribution allocationBaselineBytes;
         public BenchmarkDistribution allocatedBytes;
+        public BenchmarkBudgetEvaluation budgetEvaluation;
     }
 
     [Serializable]
@@ -45,5 +46,13 @@ namespace PerfLab.Benchmarking
         public double p95;
         public double p99;
         public double maximum;
+    }
+
+    [Serializable]
+    public sealed class BenchmarkBudgetEvaluation
+    {
+        public bool configured;
+        public bool passed;
+        public string[] failures;
     }
 }

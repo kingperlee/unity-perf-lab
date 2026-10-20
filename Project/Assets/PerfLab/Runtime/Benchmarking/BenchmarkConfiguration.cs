@@ -11,6 +11,7 @@ namespace PerfLab.Benchmarking
         public int sampleFrames = 300;
         public int operationsPerStep = 10000;
         public int randomSeed = 12345;
+        public BenchmarkBudget budget = new BenchmarkBudget();
 
         public void Validate()
         {
@@ -19,6 +20,8 @@ namespace PerfLab.Benchmarking
             if (allocationBaselineFrames < 0) throw new ArgumentOutOfRangeException(nameof(allocationBaselineFrames));
             if (sampleFrames <= 0) throw new ArgumentOutOfRangeException(nameof(sampleFrames));
             if (operationsPerStep <= 0) throw new ArgumentOutOfRangeException(nameof(operationsPerStep));
+            if (budget == null) throw new ArgumentNullException(nameof(budget));
+            budget.Validate();
         }
     }
 }

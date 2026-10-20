@@ -9,6 +9,7 @@ using PerfLab.Samples.PhysicsQueries;
 using PerfLab.Samples.TextureUploads;
 using PerfLab.Samples.UpdateDispatch;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace PerfLab.Samples.Automation
 {
@@ -20,8 +21,22 @@ namespace PerfLab.Samples.Automation
         private BenchmarkHarness _harness;
         private int _currentIndex = -1;
         private bool _running;
+        private bool _quitWhenComplete;
         private string _status = "Press Space to run the suite";
         private string _summaryPath = string.Empty;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+        private static void OpenSuiteForCommandLineRun()
+        {
+            if (Application.isEditor ||
+                !HasCommandLineFlag("-benchmarkAutoRun") ||
+                SceneManager.GetActiveScene().name == "AutomatedBenchmarkSuite")
+            {
+                return;
+            }
+
+            SceneManager.LoadScene("AutomatedBenchmarkSuite", LoadSceneMode.Single);
+        }
 
         private void Awake()
         {
@@ -29,6 +44,7 @@ namespace PerfLab.Samples.Automation
             Application.targetFrameRate = -1;
             _harness = gameObject.AddComponent<BenchmarkHarness>();
             _definitions = CreateDefinitions();
+            _quitWhenComplete = HasCommandLineFlag("-benchmarkQuit");
 
             if (!Application.isEditor || HasCommandLineFlag("-benchmarkAutoRun"))
                 StartSuite();
@@ -150,6 +166,9 @@ namespace PerfLab.Samples.Automation
                 JsonUtility.ToJson(report, true),
                 new UTF8Encoding(false));
             _status = passed ? "Suite completed: PASS" : "Suite completed: FAIL";
+            Debug.Log(_status + "\nSummary: " + _summaryPath);
+            if (_quitWhenComplete && !Application.isEditor)
+                Application.Quit(passed ? 0 : 2);
         }
 
         private static List<SuiteDefinition> CreateDefinitions()

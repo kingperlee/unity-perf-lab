@@ -121,6 +121,8 @@ Setup → Warmup（不记录）→ Sampling → Statistics → Cleanup → Expor
 
 在相同 Editor 环境连续运行清单至少两次后，可以使用 `PerfLab > Benchmarks > Compare Latest Suite Summaries` 对比最近两份汇总。工具输出各场景 P50/P95/P99 的相对变化百分比；Unity 版本、平台、CPU、GPU/API、分辨率或画质不一致时，报告会标记为不可比较，避免把设备差异误判成代码回归。当前比较器只报告变化，不使用任意百分比自动判失败。
 
+自动化环境启动 Benchmark Player 时可以附加 `-benchmarkAutoRun -benchmarkQuit`。清单写完所有独立结果和汇总后会自动退出：退出码 `0` 表示所有场景执行成功且已配置预算均通过，退出码 `2` 表示执行失败或预算超标。只传 `-benchmarkAutoRun` 或普通手动启动不会因测试结束而关闭 Player。
+
 ## 目录
 
 ```text

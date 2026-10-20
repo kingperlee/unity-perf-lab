@@ -1,0 +1,4 @@
+Unity performance laboratory resource-loading payload.
+This file intentionally contains ordinary text so the experiment measures the Resources object cache lifecycle rather than texture decoding or GPU upload.
+The first load after Resources.UnloadAsset reconstructs the Unity TextAsset object, while repeated Resources.Load calls can return the cached object.
+Operating-system file caches and build layout can still affect the result, so this experiment is not equivalent to a machine reboot followed by a physical disk read.

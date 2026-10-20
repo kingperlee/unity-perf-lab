@@ -123,6 +123,17 @@ Setup → Warmup（不记录）→ Sampling → Statistics → Cleanup → Expor
 
 界面统计进入当前 `Update` 前实际执行的 `FixedUpdate` 次数。主线程发生停顿后，Unity 会尝试用连续多次固定步追赶累计的模拟时间；固定时间步越短，需要补做的步数越多。如果每一步本身又很昂贵，追赶工作会继续拉长帧时间，形成“掉帧 → 补更多物理步 → 更严重掉帧”的螺旋恶化。`maximumDeltaTime` 会限制一次长帧可用于追赶的时间，但代价是游戏模拟时间相对真实时间变慢。本实验用 `Thread.Sleep` 作为明确的故障注入，不代表推荐在游戏循环中主动休眠。
 
+## 实验 09：资源缓存、实例化与对象池
+
+打开 `Assets/PerfLab/Scenes/ResourceLifecycleDemo.unity`：
+
+- `0`：卸载 Unity 的 `TextAsset` 对象并等待 `UnloadUnusedAssets`，随后计时一次同步 `Resources.Load`；
+- `1`：对已经缓存的资源执行 10,000 次 `Resources.Load` 查询；
+- `2`：实例化并激活 500 个带 8 个子节点的内存模板；销毁请求放在计时区间之后；
+- `3`：预热 500 个相同对象，然后只计时从池中启用和归还的成本。
+
+模式 0 只建立“Unity 对象未加载”和“Unity 对象已缓存”的区别，不能清除操作系统文件缓存，因此不能代表机器重启后的物理磁盘冷读。模式 1 展示缓存命中仍有资源路径查询成本。模式 2 把内存中 Prefab 式克隆和层级激活视为初始化成本，同时避免把 Unity 延迟到帧末处理的 `Destroy` 假装成完整释放耗时。模式 3 的预热不计时，只回答运行期复用是否能把创建尖峰移到加载阶段。首次运行和 Editor 结果仍应在目标平台 Player 中复核。
+
 ## 运行
 
 1. 用 Unity Hub 打开 `Project` 目录。

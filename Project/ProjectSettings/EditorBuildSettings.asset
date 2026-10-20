@@ -26,4 +26,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/PerfLab/Scenes/AutomatedBenchmarkSuite.unity
     guid: b498e47a3734478187e1c320a0e12f6a
+  - enabled: 1
+    path: Assets/PerfLab/Scenes/DataLayoutDemo.unity
+    guid: cffabdc0167f4ee1ac027eb43734ead5
   m_configObjects: {}

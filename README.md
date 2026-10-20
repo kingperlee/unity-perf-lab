@@ -111,6 +111,18 @@ Setup → Warmup（不记录）→ Sampling → Statistics → Cleanup → Expor
 
 所有模式使用相同节点数量，采样计时包含写入和随后读取世界坐标的成本。读取结果用于消费并触发所需的世界矩阵更新，避免把“只标记为脏、真正计算留到以后”误认为完整成本。深层级会增加祖先依赖传播；`SetParent` 还属于结构性变更，可能涉及父子列表维护及局部/世界变换处理，因此不应与普通位置赋值等同。场景只测 Transform，不附加 Renderer、Collider 或脚本组件。
 
+## 实验 08：FixedUpdate 追帧与螺旋恶化
+
+打开 `Assets/PerfLab/Scenes/FixedTimestepDemo.unity`：
+
+- 左右方括号：切换 20、10 或 5 ms 的固定时间步（50、100 或 200 Hz）；
+- `M`：切换约 333 ms 和 50 ms 的 `Time.maximumDeltaTime`；
+- `W`：切换每次 `FixedUpdate` 的模拟 CPU 工作量；
+- `1` / `2` / `3`：故意阻塞主线程 50、100 或 250 ms；
+- `R`：清除单个渲染帧内 FixedUpdate 次数峰值。
+
+界面统计进入当前 `Update` 前实际执行的 `FixedUpdate` 次数。主线程发生停顿后，Unity 会尝试用连续多次固定步追赶累计的模拟时间；固定时间步越短，需要补做的步数越多。如果每一步本身又很昂贵，追赶工作会继续拉长帧时间，形成“掉帧 → 补更多物理步 → 更严重掉帧”的螺旋恶化。`maximumDeltaTime` 会限制一次长帧可用于追赶的时间，但代价是游戏模拟时间相对真实时间变慢。本实验用 `Thread.Sleep` 作为明确的故障注入，不代表推荐在游戏循环中主动休眠。
+
 ## 运行
 
 1. 用 Unity Hub 打开 `Project` 目录。

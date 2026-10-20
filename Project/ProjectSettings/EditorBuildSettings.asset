@@ -32,4 +32,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/PerfLab/Scenes/TransformHierarchyDemo.unity
     guid: 86dbb844182740ce9816f76c16d94934
+  - enabled: 1
+    path: Assets/PerfLab/Scenes/FixedTimestepDemo.unity
+    guid: 77a3648b4a744825bfb720173bb60a60
   m_configObjects: {}

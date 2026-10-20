@@ -75,6 +75,19 @@ Setup → Warmup（不记录）→ Sampling → Statistics → Cleanup → Expor
 
 五种模式使用相同数据和 16 轮浮点计算。计时有意包含 `Schedule()` 到紧随其后的 `Complete()`：它测量的是“本帧立即需要结果”时的端到端成本，小工作量下调度和同步成本可能高于并行收益，数据规模增大后才可能出现交叉点。实际业务如果允许延迟，应尽早 Schedule、尽晚 Complete，或在后续帧检查 `JobHandle.IsCompleted` 后 Complete 并刷新结果，让主线程工作与 Job 重叠；这属于另一种流水线测试，不能与本实验结果混为一谈。`NativeArray` 在 Setup 阶段一次性分配并在 Cleanup 释放，不把容器创建成本混入样本。请关闭 Burst Safety Checks 后再做最终性能结论，并用目标设备 Development Build 复核；Editor 数值主要用于观察趋势。
 
+## 实验 05：纹理准备、上传与尖峰
+
+打开 `Assets/PerfLab/Scenes/TextureUploadDemo.unity`：
+
+- `0`：只在 CPU 填充纹理原始像素；
+- `1`：只修改一个像素后 `Apply`，不重建 Mipmap；
+- `2`：`Apply` 并重建 Mipmap；
+- `3`：完整填充像素后再 `Apply`；
+- 左右方括号：切换 256、512、1024、2048 边长；
+- `E`：导出结果。
+
+本实验先把 CPU 数据准备、纹理提交和 Mipmap 重建拆开，纹理在 Setup 创建并复用，避免把对象创建混入样本。Measured Step 的 Stopwatch 只表示主线程准备及提交所花的时间；图形 API 可能异步执行，因此它不能证明 GPU 已经完成上传。GPU 完成时间、渲染线程等待及显存行为需要结合 Unity Profiler、Render Thread/GPU 模块和目标设备验证。首次资源加载与缓存命中的对照将在本阶段后续加入，不能通过反复 `Resources.Load` 同一资源来模拟首次加载。
+
 ## 运行
 
 1. 用 Unity Hub 打开 `Project` 目录。

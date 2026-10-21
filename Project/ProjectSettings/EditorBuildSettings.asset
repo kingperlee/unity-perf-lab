@@ -44,4 +44,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/PerfLab/Scenes/PhysicsTransformSyncDemo.unity
     guid: 49d62ed295e94314a9be6ec0f9b87ed4
+  - enabled: 1
+    path: Assets/PerfLab/Scenes/GcBehaviorDemo.unity
+    guid: 914bf64b8d5542c686337da9d1798694
   m_configObjects: {}

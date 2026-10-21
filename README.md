@@ -158,6 +158,20 @@ Setup → Warmup（不记录）→ Sampling → Statistics → Cleanup → Expor
 
 三种模式每个样本执行相同数量的 Transform 写入与 Raycast，区别是能否把物理世界同步合并。先集中修改再同步一次，物理引擎可以批量更新 broadphase；如果业务逻辑要求每移动一个对象就立即查询其最新物理状态，同步工作会被重复触发。`autoSyncTransforms` 提供的是兼容旧行为的正确性便利，不表示同步成本消失。测试会在 Cleanup 恢复工程原来的全局设置。
 
+## 实验 12：托管分配与垃圾回收暂停
+
+打开 `Assets/PerfLab/Scenes/GcBehaviorDemo.unity`：
+
+- `Space`：持续在每帧制造短生命周期垃圾；
+- 左右方括号：切换每帧 32 KiB、256 KiB 或 1 MiB；
+- `B`：在当前帧突发制造 16 MiB 临时垃圾；
+- `L`：持有额外 16 MiB 引用；`U`：只释放这些引用；
+- `C`：显式执行完整 `GC.Collect` 流程；
+- `R`：重置回收次数及帧间隔观察；
+- `H`：隐藏或恢复 IMGUI，便于采集更干净的 Profiler 数据。
+
+分配、失去引用和真正回收是三个不同事件。`List.Clear()` 只会让对象具备被回收的资格，不会保证内存立即下降；回收发生时才扫描并处理不可达对象。界面记录各代 `GC.CollectionCount`、报告的托管内存及最大帧间隔，但 Unity 使用的 GC 实现和增量模式会影响代际计数及暂停形态。显式完整回收只用于展示停顿，不应被当成常规性能优化。IMGUI 自身可能产生分配，正式观察时应按 `H` 隐藏界面并配合 Profiler。
+
 ## 运行
 
 1. 用 Unity Hub 打开 `Project` 目录。

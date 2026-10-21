@@ -146,6 +146,18 @@ Setup → Warmup（不记录）→ Sampling → Statistics → Cleanup → Expor
 
 每个对象含 4 个子节点。界面分别报告累计主动工作时间、最重的单帧工作切片和运行期间最大的帧间隔。分帧通常不会消除总 CPU 工作，甚至会增加循环与调度开销；它用更长的完成延迟换取更小的单帧尖峰。`Destroy` 只在调用时标记对象，Unity 的原生对象清理发生在稍后阶段，因此本实验额外保留后续帧并观察帧间隔，避免只测 `Destroy()` 调用就得出“释放很便宜”的结论。
 
+## 实验 11：Transform 与物理世界同步
+
+打开 `Assets/PerfLab/Scenes/PhysicsTransformSyncDemo.unity`：
+
+- `0`：先移动全部 Collider Transform，显式调用一次 `Physics.SyncTransforms()`，再执行全部 Raycast；
+- `1`：对每个 Collider 依次执行移动、显式同步、Raycast；
+- `2`：启用 `Physics.autoSyncTransforms`，对每个 Collider 交错执行移动和 Raycast；
+- 左右方括号：切换 100、500 或 1,000 个 Collider；
+- `E`：导出结果。
+
+三种模式每个样本执行相同数量的 Transform 写入与 Raycast，区别是能否把物理世界同步合并。先集中修改再同步一次，物理引擎可以批量更新 broadphase；如果业务逻辑要求每移动一个对象就立即查询其最新物理状态，同步工作会被重复触发。`autoSyncTransforms` 提供的是兼容旧行为的正确性便利，不表示同步成本消失。测试会在 Cleanup 恢复工程原来的全局设置。
+
 ## 运行
 
 1. 用 Unity Hub 打开 `Project` 目录。

@@ -172,6 +172,18 @@ Setup → Warmup（不记录）→ Sampling → Statistics → Cleanup → Expor
 
 分配、失去引用和真正回收是三个不同事件。`List.Clear()` 只会让对象具备被回收的资格，不会保证内存立即下降；回收发生时才扫描并处理不可达对象。界面记录各代 `GC.CollectionCount`、报告的托管内存及最大帧间隔，但 Unity 使用的 GC 实现和增量模式会影响代际计数及暂停形态。显式完整回收只用于展示停顿，不应被当成常规性能优化。IMGUI 自身可能产生分配，正式观察时应按 `H` 隐藏界面并配合 Profiler。
 
+## 实验 13：Job 立即等待与跨帧流水线
+
+打开 `Assets/PerfLab/Scenes/JobsPipelineDemo.unity`：
+
+- `0`：停止持续调度；
+- `1`：每帧 Schedule Burst `IJobParallelFor` 后立刻 `Complete()`；
+- `2`：调度后跨帧轮询 `IsCompleted`，只在完成后调用 `Complete()`、读取结果并调度下一份工作；
+- 左右方括号：切换 100,000、500,000 或 1,000,000 个元素；
+- `R`：重置吞吐、延迟和帧间隔观察。
+
+立即 `Complete` 能在本帧得到最新结果，但 `Complete()` 会包含尚未完成的工作线程时间，主线程因此阻塞。跨帧模式不会读取正在被 Job 写入的 `NativeArray`；它先检查 `IsCompleted`，确认完成后仍调用 `Complete()` 以结束依赖和安全状态，再发布结果。这样可以让主线程与 Job 重叠，但结果会延迟一个或多个渲染帧，吞吐量也受到“只允许一个在途 Job”的限制。真实系统可进一步使用双缓冲和依赖链，在不读写冲突的前提下保持多份工作流水化。
+
 ## 运行
 
 1. 用 Unity Hub 打开 `Project` 目录。

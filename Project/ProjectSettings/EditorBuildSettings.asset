@@ -47,4 +47,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/PerfLab/Scenes/GcBehaviorDemo.unity
     guid: 914bf64b8d5542c686337da9d1798694
+  - enabled: 1
+    path: Assets/PerfLab/Scenes/JobsPipelineDemo.unity
+    guid: cb4f0820b5e041abb98534b1c87d6b8f
   m_configObjects: {}

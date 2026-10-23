@@ -197,6 +197,19 @@ Setup → Warmup（不记录）→ Sampling → Statistics → Cleanup → Expor
 
 模式 0–2 属于同一 GameObject 的组件表访问，模式 3–5 属于局部层级访问，可以分别横向比较。`GameObject.Find` 是全活动场景名称搜索，语义和搜索范围都不同，只用于展示把它放进热路径的规模风险，不能被解释为 `GetComponent` 的直接替代方案。缓存引用通常最快，但需要处理对象销毁、场景切换和池复用后的引用有效性；不应为了省一次低频查找引入错误的生命周期所有权。
 
+## 实验 15：UGUI 脏标记与重建范围
+
+打开 `Assets/PerfLab/Scenes/UiRebuildDemo.unity`：
+
+- `0`：只修改普通数据，作为不触发 UI 系统的控制基线；
+- `1`：修改一个 `Image.color` 并强制完成 Canvas 更新；
+- `2`：修改一个 `LayoutElement.preferredHeight`，强制重建包含全部元素的布局并完成 Canvas 更新；
+- `3`：修改相同属性，但动态布局根和 Canvas 中只有 50 个元素，其余元素位于独立静态 Canvas；
+- 左右方括号：切换总计 100、500 或 1,000 个 UI 元素；
+- `E`：导出结果。
+
+UGUI 属性赋值经常只设置脏标记，真正的 Layout、Graphic 和 Canvas 批次更新发生在稍后的 PlayerLoop 阶段；只用 Stopwatch 包围赋值会漏掉主要成本。本实验使用 `LayoutRebuilder.ForceRebuildLayoutImmediate` 和 `Canvas.ForceUpdateCanvases`，有意把完整工作拉进测量区间。业务代码通常仍应使用延迟合并的正常重建，而不是每次修改后强制刷新。独立 Canvas 可限制 Graphic rebuild 范围；要限制 Layout 传播，还需要拆分布局根，并权衡额外 Canvas 的批次和管理成本。
+
 ## 运行
 
 1. 用 Unity Hub 打开 `Project` 目录。

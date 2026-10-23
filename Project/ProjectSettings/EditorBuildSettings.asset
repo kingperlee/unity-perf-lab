@@ -53,4 +53,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/PerfLab/Scenes/ReferenceLookupDemo.unity
     guid: 6c50c76160ac4b62a9a06efa36be45e3
+  - enabled: 1
+    path: Assets/PerfLab/Scenes/UiRebuildDemo.unity
+    guid: 8f03dc9cbbc543c19059f82e100b8f52
   m_configObjects: {}

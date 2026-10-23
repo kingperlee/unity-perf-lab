@@ -2,7 +2,8 @@
   "name": "PerfLab.Runtime",
   "rootNamespace": "PerfLab",
   "references": [
-    "Unity.Burst"
+    "Unity.Burst",
+    "UnityEngine.UI"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

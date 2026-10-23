@@ -235,6 +235,20 @@ UGUI 属性赋值经常只设置脏标记，真正的 Layout、Graphic 和 Canva
 
 四种模式都让相同数量的逻辑节点经历关闭和开启。普通字段只修改托管数据；`Behaviour.enabled` 还会改变 Unity 的回调状态；`SetActive` 会计算层级中的 `activeInHierarchy` 并触发 `OnDisable/OnEnable`。父节点切换减少了 C# 到原生层的 API 调用次数，但引擎仍需遍历每个受影响的后代。示例节点只带一个轻量探针；真实对象如果还有 Renderer、Collider、Animator 等组件，还会产生各子系统的注销和重新注册成本。
 
+## 实验 18：关闭日志后的参数构造成本
+
+打开 `Assets/PerfLab/Scenes/LoggingDemo.unity`：
+
+- `0`：只执行相同规模的基线循环；
+- `1`：关闭 Unity 日志输出，但仍为每次 `Debug.Log` 预先拼接字符串；
+- `2`：在调用点检查日志开关，关闭时不构造拼接字符串；
+- `3`：关闭输出后调用 `Debug.LogFormat` 的 `params` 重载；
+- `4`：在调用点检查开关，关闭时不准备格式化参数；
+- 左右方括号：切换每个样本 100、1,000 或 10,000 次操作；
+- `E`：导出结果。
+
+C# 会先计算方法实参，再进入 `Debug.Log` 或 `Debug.LogFormat` 检查日志是否启用。因此，关闭输出并不会自动消除调用点的字符串拼接；`params object[]` 还可能创建数组并装箱整数。调用前判断开关才会跳过这些准备工作。实验故意不连续输出真实日志，因为启用后的 Console、堆栈采集、Editor 界面和磁盘写入会主导结果，也可能让编辑器失去响应。
+
 ## 运行
 
 1. 用 Unity Hub 打开 `Project` 目录。

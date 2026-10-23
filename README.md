@@ -222,6 +222,19 @@ UGUI 属性赋值经常只设置脏标记，真正的 Layout、Graphic 和 Canva
 
 字符串字面量本身会被驻留，重复传入并不等于每次创建新的托管字符串；需要避免的是热路径中重复执行名称解析、哈希以及 string 重载的跨边界工作。`Shader.PropertyToID` 和 `Animator.StringToHash` 适合在 `static readonly` 字段或初始化阶段执行一次。缓存值只在相应 API 语义中使用，不应假设 Shader 属性 ID 与 Animator 参数 hash 可以互换。
 
+## 实验 17：数据标志、组件启用与层级激活
+
+打开 `Assets/PerfLab/Scenes/ActivationDemo.unity`：
+
+- `0`：为每个逻辑节点切换普通 `bool`；
+- `1`：逐个禁用和启用 `MonoBehaviour.enabled`；
+- `2`：逐个对平坦子对象调用 `SetActive(false/true)`；
+- `3`：只调用一次父节点 `SetActive(false/true)`，让相同数量的后代随层级切换；
+- 左右方括号：切换 100、1,000 或 5,000 个节点；
+- `E`：导出结果。
+
+四种模式都让相同数量的逻辑节点经历关闭和开启。普通字段只修改托管数据；`Behaviour.enabled` 还会改变 Unity 的回调状态；`SetActive` 会计算层级中的 `activeInHierarchy` 并触发 `OnDisable/OnEnable`。父节点切换减少了 C# 到原生层的 API 调用次数，但引擎仍需遍历每个受影响的后代。示例节点只带一个轻量探针；真实对象如果还有 Renderer、Collider、Animator 等组件，还会产生各子系统的注销和重新注册成本。
+
 ## 运行
 
 1. 用 Unity Hub 打开 `Project` 目录。

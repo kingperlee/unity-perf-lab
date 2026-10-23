@@ -59,4 +59,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/PerfLab/Scenes/PropertyIdDemo.unity
     guid: 07d5ec8aad6347e5b1700ec5bf329410
+  - enabled: 1
+    path: Assets/PerfLab/Scenes/ActivationDemo.unity
+    guid: 47ce77abc0014e9ea16e12cc40452bce
   m_configObjects: {}

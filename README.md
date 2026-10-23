@@ -210,6 +210,18 @@ Setup → Warmup（不记录）→ Sampling → Statistics → Cleanup → Expor
 
 UGUI 属性赋值经常只设置脏标记，真正的 Layout、Graphic 和 Canvas 批次更新发生在稍后的 PlayerLoop 阶段；只用 Stopwatch 包围赋值会漏掉主要成本。本实验使用 `LayoutRebuilder.ForceRebuildLayoutImmediate` 和 `Canvas.ForceUpdateCanvases`，有意把完整工作拉进测量区间。业务代码通常仍应使用延迟合并的正常重建，而不是每次修改后强制刷新。独立 Canvas 可限制 Graphic rebuild 范围；要限制 Layout 传播，还需要拆分布局根，并权衡额外 Canvas 的批次和管理成本。
 
+## 实验 16：字符串标识符与整数 ID 缓存
+
+打开 `Assets/PerfLab/Scenes/PropertyIdDemo.unity`：
+
+- `0` / `1`：比较 `Material.SetColor(string, value)` 与预缓存属性 ID 的 `SetColor(int, value)`；
+- `2` / `3`：比较每次调用 `Shader.PropertyToID` 与直接复用缓存 ID；
+- `4` / `5`：比较每次调用 `Animator.StringToHash` 与直接复用缓存 hash；
+- 左右方括号：切换每个样本 1,000、10,000 或 100,000 次操作；
+- `E`：导出结果。
+
+字符串字面量本身会被驻留，重复传入并不等于每次创建新的托管字符串；需要避免的是热路径中重复执行名称解析、哈希以及 string 重载的跨边界工作。`Shader.PropertyToID` 和 `Animator.StringToHash` 适合在 `static readonly` 字段或初始化阶段执行一次。缓存值只在相应 API 语义中使用，不应假设 Shader 属性 ID 与 Animator 参数 hash 可以互换。
+
 ## 运行
 
 1. 用 Unity Hub 打开 `Project` 目录。

@@ -184,6 +184,19 @@ Setup → Warmup（不记录）→ Sampling → Statistics → Cleanup → Expor
 
 立即 `Complete` 能在本帧得到最新结果，但 `Complete()` 会包含尚未完成的工作线程时间，主线程因此阻塞。跨帧模式不会读取正在被 Job 写入的 `NativeArray`；它先检查 `IsCompleted`，确认完成后仍调用 `Complete()` 以结束依赖和安全状态，再发布结果。这样可以让主线程与 Job 重叠，但结果会延迟一个或多个渲染帧，吞吐量也受到“只允许一个在途 Job”的限制。真实系统可进一步使用双缓冲和依赖链，在不读写冲突的前提下保持多份工作流水化。
 
+## 实验 14：引用缓存与查找范围
+
+打开 `Assets/PerfLab/Scenes/ReferenceLookupDemo.unity`：
+
+- `0` / `1` / `2`：比较缓存组件引用、`GetComponent<T>` 与 `TryGetComponent<T>`；目标组件排在 8 个占位组件之后；
+- `3` / `4`：比较缓存子 Transform 与在 64 个直接子节点中按名称执行 `Transform.Find`；
+- `5`：按包含 8 层的路径执行 `Transform.Find`；
+- `6`：在包含 1,000 个干扰对象的活动场景中执行 `GameObject.Find`；
+- 左右方括号：切换每个样本 100、1,000 或 10,000 次操作；
+- `E`：导出结果。
+
+模式 0–2 属于同一 GameObject 的组件表访问，模式 3–5 属于局部层级访问，可以分别横向比较。`GameObject.Find` 是全活动场景名称搜索，语义和搜索范围都不同，只用于展示把它放进热路径的规模风险，不能被解释为 `GetComponent` 的直接替代方案。缓存引用通常最快，但需要处理对象销毁、场景切换和池复用后的引用有效性；不应为了省一次低频查找引入错误的生命周期所有权。
+
 ## 运行
 
 1. 用 Unity Hub 打开 `Project` 目录。

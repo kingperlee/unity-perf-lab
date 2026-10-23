@@ -50,4 +50,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/PerfLab/Scenes/JobsPipelineDemo.unity
     guid: cb4f0820b5e041abb98534b1c87d6b8f
+  - enabled: 1
+    path: Assets/PerfLab/Scenes/ReferenceLookupDemo.unity
+    guid: 6c50c76160ac4b62a9a06efa36be45e3
   m_configObjects: {}

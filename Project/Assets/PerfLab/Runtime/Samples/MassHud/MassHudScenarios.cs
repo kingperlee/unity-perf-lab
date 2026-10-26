@@ -8,7 +8,8 @@ namespace PerfLab.Samples.MassHud
     internal enum MassHudKind
     {
         PerObjectCanvas,
-        CentralizedCanvas
+        CentralizedCanvas,
+        SpriteRenderers
     }
 
     internal sealed class MassHudScenario : IBenchmarkScenario
@@ -27,9 +28,7 @@ namespace PerfLab.Samples.MassHud
 
         public void Setup(BenchmarkConfiguration configuration)
         {
-            _elements = MassHudSceneFactory.Build(
-                configuration.operationsPerStep,
-                _kind == MassHudKind.PerObjectCanvas);
+            _elements = MassHudSceneFactory.Build(configuration.operationsPerStep, _kind);
         }
 
         public void ExecuteStep()
@@ -69,6 +68,8 @@ namespace PerfLab.Samples.MassHud
         private Camera _camera;
         private Image _healthFill;
         private Text _nameLabel;
+        private Transform _spriteHealthFill;
+        private TextMesh _spriteNameLabel;
         private int _index;
         private int _level;
         private bool _perObjectUpdate;
@@ -91,6 +92,22 @@ namespace PerfLab.Samples.MassHud
             Apply(Time.unscaledTime, perObjectUpdate);
         }
 
+        public void InitializeSprite(
+            int index,
+            Camera targetCamera,
+            Transform healthFill,
+            TextMesh nameLabel)
+        {
+            _index = index;
+            _level = 1 + index % 99;
+            _camera = targetCamera;
+            _spriteHealthFill = healthFill;
+            _spriteNameLabel = nameLabel;
+            _spriteNameLabel.text = BuildDisplayName();
+            enabled = false;
+            Apply(Time.unscaledTime, false);
+        }
+
         private void Update()
         {
             Apply(Time.unscaledTime, true);
@@ -105,12 +122,24 @@ namespace PerfLab.Samples.MassHud
         {
             transform.rotation = _camera.transform.rotation;
             float health = 0.5f + 0.5f * Mathf.Sin(time * 1.7f + _index * 0.173f);
-            Vector2 fillSize = _healthFill.rectTransform.sizeDelta;
-            fillSize.x = HealthBarWidth * health;
-            _healthFill.rectTransform.sizeDelta = fillSize;
+            if (_healthFill != null)
+            {
+                Vector2 fillSize = _healthFill.rectTransform.sizeDelta;
+                fillSize.x = HealthBarWidth * health;
+                _healthFill.rectTransform.sizeDelta = fillSize;
+            }
+            else
+            {
+                Vector3 fillScale = _spriteHealthFill.localScale;
+                fillScale.x = 2.4f * health;
+                _spriteHealthFill.localScale = fillScale;
+                Vector3 fillPosition = _spriteHealthFill.localPosition;
+                fillPosition.x = -1.2f + fillScale.x * 0.5f;
+                _spriteHealthFill.localPosition = fillPosition;
+            }
 
             // The baseline represents a common mistake: assigning unchanged text every frame.
-            if (emulateNaiveAssignments)
+            if (emulateNaiveAssignments && _nameLabel != null)
                 _nameLabel.text = BuildDisplayName();
         }
 
@@ -125,8 +154,11 @@ namespace PerfLab.Samples.MassHud
         private const string RuntimeRootName = "Mass HUD Runtime";
         private static GameObject _currentRoot;
         private static Material _currentDepthMaterial;
+        private static Material _currentTextMaterial;
+        private static Texture2D _currentSpriteTexture;
+        private static Sprite _currentSprite;
 
-        public static MassHudElement[] Build(int count, bool perObjectUpdate)
+        public static MassHudElement[] Build(int count, MassHudKind kind)
         {
             RetirePreviousScene();
 
@@ -140,6 +172,19 @@ namespace PerfLab.Samples.MassHud
             _currentDepthMaterial = new Material(depthShader) { name = "Mass HUD Shared Depth Material" };
             Font font = LoadBuiltinFont();
             var elements = new MassHudElement[count];
+            bool perObjectUpdate = kind == MassHudKind.PerObjectCanvas;
+            if (kind == MassHudKind.SpriteRenderers)
+            {
+                CreateRuntimeSprite();
+                Shader textShader = Resources.Load<Shader>("PerfLabHudText");
+                if (textShader == null)
+                    throw new InvalidOperationException("Missing Resources/PerfLabHudText.shader");
+                _currentTextMaterial = new Material(textShader)
+                {
+                    name = "Mass HUD Shared Text Material",
+                    mainTexture = font.material.mainTexture
+                };
+            }
 
             const int columns = 25;
             for (int i = 0; i < count; i++)
@@ -150,14 +195,22 @@ namespace PerfLab.Samples.MassHud
                 float y = 1.5f + (i % 7) * 0.08f;
                 float z = 5f + row * 1.45f;
                 Vector3 anchor = new Vector3(x, y, z);
-                elements[i] = CreateHud(
-                    _currentRoot.transform,
-                    camera,
-                    _currentDepthMaterial,
-                    font,
-                    anchor,
-                    i,
-                    perObjectUpdate);
+                elements[i] = kind == MassHudKind.SpriteRenderers
+                    ? CreateSpriteHud(
+                        _currentRoot.transform,
+                        camera,
+                        _currentDepthMaterial,
+                        font,
+                        anchor,
+                        i)
+                    : CreateCanvasHud(
+                        _currentRoot.transform,
+                        camera,
+                        _currentDepthMaterial,
+                        font,
+                        anchor,
+                        i,
+                        perObjectUpdate);
             }
 
             if (!perObjectUpdate)
@@ -166,7 +219,7 @@ namespace PerfLab.Samples.MassHud
             return elements;
         }
 
-        private static MassHudElement CreateHud(
+        private static MassHudElement CreateCanvasHud(
             Transform parent,
             Camera camera,
             Material depthMaterial,
@@ -233,6 +286,120 @@ namespace PerfLab.Samples.MassHud
             var element = hudRoot.AddComponent<MassHudElement>();
             element.Initialize(index, camera, healthFill, label, perObjectUpdate);
             return element;
+        }
+
+        private static MassHudElement CreateSpriteHud(
+            Transform parent,
+            Camera camera,
+            Material depthMaterial,
+            Font font,
+            Vector3 anchor,
+            int index)
+        {
+            GameObject hudRoot = CreateHudRoot(parent, camera, anchor, index);
+            CreateDepthCard(hudRoot.transform, depthMaterial);
+
+            SpriteRenderer background = CreateSpriteRenderer(
+                hudRoot.transform,
+                "Background",
+                new Color(0.03f, 0.03f, 0.03f, 0.92f),
+                new Vector3(0f, 0f, -0.01f),
+                new Vector2(2.6f, 0.68f),
+                0);
+            SpriteRenderer healthBack = CreateSpriteRenderer(
+                hudRoot.transform,
+                "Health Back",
+                new Color(0.18f, 0.04f, 0.04f, 1f),
+                new Vector3(0f, -0.18f, -0.015f),
+                new Vector2(2.4f, 0.18f),
+                1);
+            SpriteRenderer healthFill = CreateSpriteRenderer(
+                hudRoot.transform,
+                "Health Fill",
+                new Color(0.15f, 0.9f, 0.25f, 1f),
+                new Vector3(0f, -0.18f, -0.02f),
+                new Vector2(2.4f, 0.18f),
+                2);
+
+            var nameObject = new GameObject("Name");
+            nameObject.transform.SetParent(hudRoot.transform, false);
+            nameObject.transform.localPosition = new Vector3(0f, 0.14f, -0.025f);
+            var nameLabel = nameObject.AddComponent<TextMesh>();
+            nameLabel.font = font;
+            nameLabel.fontSize = 32;
+            nameLabel.characterSize = 0.06f;
+            nameLabel.anchor = TextAnchor.MiddleCenter;
+            nameLabel.alignment = TextAlignment.Center;
+            nameLabel.color = Color.white;
+            var nameRenderer = nameObject.GetComponent<MeshRenderer>();
+            nameRenderer.sharedMaterial = _currentTextMaterial;
+            nameRenderer.sortingOrder = 3;
+
+            var element = hudRoot.AddComponent<MassHudElement>();
+            element.InitializeSprite(index, camera, healthFill.transform, nameLabel);
+            return element;
+        }
+
+        private static GameObject CreateHudRoot(
+            Transform parent,
+            Camera camera,
+            Vector3 anchor,
+            int index)
+        {
+            var hudRoot = new GameObject("HUD " + index);
+            hudRoot.transform.SetParent(parent, false);
+            hudRoot.transform.position = anchor;
+            hudRoot.transform.rotation = camera.transform.rotation;
+            return hudRoot;
+        }
+
+        private static void CreateDepthCard(Transform parent, Material depthMaterial)
+        {
+            var depthObject = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            depthObject.name = "Depth";
+            depthObject.transform.SetParent(parent, false);
+            depthObject.transform.localPosition = Vector3.zero;
+            depthObject.transform.localRotation = Quaternion.identity;
+            depthObject.transform.localScale = new Vector3(2.65f, 0.7f, 1f);
+            UnityEngine.Object.Destroy(depthObject.GetComponent<Collider>());
+            depthObject.GetComponent<MeshRenderer>().sharedMaterial = depthMaterial;
+        }
+
+        private static SpriteRenderer CreateSpriteRenderer(
+            Transform parent,
+            string name,
+            Color color,
+            Vector3 localPosition,
+            Vector2 size,
+            int sortingOrder)
+        {
+            var spriteObject = new GameObject(name);
+            spriteObject.transform.SetParent(parent, false);
+            spriteObject.transform.localPosition = localPosition;
+            spriteObject.transform.localScale = new Vector3(size.x, size.y, 1f);
+            var renderer = spriteObject.AddComponent<SpriteRenderer>();
+            renderer.sprite = _currentSprite;
+            renderer.color = color;
+            renderer.sortingOrder = sortingOrder;
+            return renderer;
+        }
+
+        private static void CreateRuntimeSprite()
+        {
+            _currentSpriteTexture = new Texture2D(1, 1, TextureFormat.RGBA32, false)
+            {
+                name = "Mass HUD White Pixel",
+                filterMode = FilterMode.Point,
+                wrapMode = TextureWrapMode.Clamp
+            };
+            _currentSpriteTexture.SetPixel(0, 0, Color.white);
+            _currentSpriteTexture.Apply(false, true);
+            _currentSprite = Sprite.Create(
+                _currentSpriteTexture,
+                new Rect(0f, 0f, 1f, 1f),
+                new Vector2(0.5f, 0.5f),
+                1f);
+            _currentSprite.name = "Mass HUD Shared Sprite";
         }
 
         private static Image CreateImage(Transform parent, string name, Color color)
@@ -311,8 +478,17 @@ namespace PerfLab.Samples.MassHud
             UnityEngine.Object.Destroy(_currentRoot);
             if (_currentDepthMaterial != null)
                 UnityEngine.Object.Destroy(_currentDepthMaterial);
+            if (_currentTextMaterial != null)
+                UnityEngine.Object.Destroy(_currentTextMaterial);
+            if (_currentSprite != null)
+                UnityEngine.Object.Destroy(_currentSprite);
+            if (_currentSpriteTexture != null)
+                UnityEngine.Object.Destroy(_currentSpriteTexture);
             _currentRoot = null;
             _currentDepthMaterial = null;
+            _currentTextMaterial = null;
+            _currentSprite = null;
+            _currentSpriteTexture = null;
         }
     }
 }

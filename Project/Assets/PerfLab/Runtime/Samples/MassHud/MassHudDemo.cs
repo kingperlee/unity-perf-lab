@@ -29,6 +29,7 @@ namespace PerfLab.Samples.MassHud
                 _hudCountIndex = Mathf.Min(_hudCounts.Length - 1, _hudCountIndex + 1);
             if (Input.GetKeyDown(KeyCode.Alpha0)) Run(MassHudKind.PerObjectCanvas);
             if (Input.GetKeyDown(KeyCode.Alpha1)) Run(MassHudKind.CentralizedCanvas);
+            if (Input.GetKeyDown(KeyCode.Alpha2)) Run(MassHudKind.SpriteRenderers);
             if (Input.GetKeyDown(KeyCode.E) && _harness.LastResult != null)
                 _exportStatus = "Exported: " + BenchmarkResultExporter.Export(_harness.LastResult);
         }
@@ -39,10 +40,11 @@ namespace PerfLab.Samples.MassHud
             _gui.EnsureCreated();
             GUILayout.BeginArea(_gui.GetPanelRect(790f), _gui.Box);
             _scrollPosition = GUILayout.BeginScrollView(_scrollPosition);
-            GUILayout.Label("Mass HUD case study · Step 1: World-space Canvas baseline", _gui.Title);
+            GUILayout.Label("Mass HUD case study · Step 2: Canvas versus Sprite renderers", _gui.Title);
             GUILayout.Space(8f);
             GUILayout.Label("[0] One Update + naive assignments per HUD Canvas", _gui.Label);
             GUILayout.Label("[1] One manager + cached unchanged text", _gui.Label);
+            GUILayout.Label("[2] SpriteRenderer bars + cached 3D TextMesh names", _gui.Label);
             GUILayout.Label("Left bracket / Right bracket: 100, 500, or 1,000 HUDs", _gui.Label);
             GUILayout.Label("[H] Hide overlay for cleaner profiling   [E] Export result", _gui.Label);
             GUILayout.Label("Camera: WASD move, Q/Space down/up, hold right mouse to look, Shift boost, R reset", _gui.Label);
@@ -60,8 +62,8 @@ namespace PerfLab.Samples.MassHud
             if (!string.IsNullOrEmpty(_exportStatus)) GUILayout.Label(_exportStatus, _gui.Label);
             GUILayout.Space(8f);
             GUILayout.Label(
-                "Both modes render the same world-space Canvas hierarchy and use an invisible depth-writing card behind each HUD. Walls and nearer HUD cards therefore occlude farther cards. " +
-                "Step 1 intentionally keeps the Renderer count unchanged and only asks how much per-object Update plus repeated text assignment costs. Multilingual glyph handling arrives in the text-rendering step.",
+                "Modes 0 and 1 render the same world-space Canvas hierarchy. Mode 2 keeps the same positions, animation and depth cards but replaces Canvas/Image with SpriteRenderers and cached 3D TextMesh. " +
+                "Walls and nearer HUD cards therefore use the same occlusion rule in every mode. Multilingual glyph fallback arrives in the later text-instancing step.",
                 _gui.Label);
             GUILayout.EndScrollView();
             GUILayout.EndArea();

@@ -251,16 +251,17 @@ C# 会先计算方法实参，再进入 `Debug.Log` 或 `Debug.LogFormat` 检查
 
 ## 综合案例 01：大量怪物名字与血条
 
-目标是在同一画面显示大量怪物 HUD，并逐步从 World-space Canvas 演进到批量 GPU 渲染，同时保持墙体遮挡和 HUD 之间的前后遮挡正确。当前完成第 1 步，打开 `Assets/PerfLab/Scenes/MassHudCaseStudy.unity`：
+目标是在同一画面显示大量怪物 HUD，并逐步从 World-space Canvas 演进到批量 GPU 渲染，同时保持墙体遮挡和 HUD 之间的前后遮挡正确。当前完成第 2 步，打开 `Assets/PerfLab/Scenes/MassHudCaseStudy.unity`：
 
 - `0`：每个 HUD 拥有自己的 World-space Canvas 和 `Update`，并重复写入没有变化的名字；
 - `1`：保持完全相同的 Canvas 层级和画面，由一个 Manager 集中更新，名字只在初始化时赋值；
+- `2`：保持相同位置、血量动画和深度卡片，使用共享 Sprite 的 SpriteRenderer 血条和缓存的 3D TextMesh 名字；
 - 左右方括号：切换 100、500 或 1,000 个 HUD；
 - `H`：隐藏 IMGUI，以便使用 Profiler 获取更干净的数据；
 - `E`：导出最后一次完整帧间隔结果。
 - 相机使用 `WASD` 移动、`Q/Space` 降低/升高、按住鼠标右键旋转、`Shift` 加速、`R` 恢复初始位置。
 
-每个 HUD 后方都有一张只写深度、不写颜色的卡片。场景不透明物体先写深度，近处 HUD 卡片也会阻止远处 HUD 通过深度测试，因此墙体和 HUD 之间都能形成前后遮挡。两个模式的 Renderer 和 Canvas 数量完全相同，第 1 步只比较分散回调、重复文字赋值与集中脏更新。当前使用稳定的占位玩家名；多语言字体回退、字形缓存和 Glyph Instancing 将在文字渲染步骤单独加入，避免与 Canvas 基线混测。
+每个 HUD 后方都有一张只写深度、不写颜色的卡片。场景不透明物体先写深度，近处 HUD 卡片也会阻止远处 HUD 通过深度测试，因此墙体和 HUD 之间都能形成前后遮挡。模式 0 和 1 的 Renderer 与 Canvas 数量完全相同，只比较分散回调、重复文字赋值与集中脏更新。模式 2 开始移除独立 Canvas，仍保留每个 HUD 的 SpriteRenderer、TextMesh 和深度 Renderer，从而隔离 Canvas 重建与独立 Renderer 管理成本。当前使用稳定的占位玩家名；多语言字体回退、字形缓存和 Glyph Instancing 将在文字渲染步骤单独加入，避免与 Canvas 基线混测。
 
 后续会在同一个场景依次加入：共享材质的 SpriteRenderer/TMP 版本、Instanced 血条与缓存文字的混合版本，以及血条和多语言 Glyph 都采用实例化缓冲的目标版本。
 

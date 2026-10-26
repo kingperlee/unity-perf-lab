@@ -155,6 +155,7 @@ namespace PerfLab.Samples.MassHud
         private static GameObject _currentRoot;
         private static Material _currentDepthMaterial;
         private static Material _currentTextMaterial;
+        private static Material _currentEnvironmentMaterial;
         private static Texture2D _currentSpriteTexture;
         private static Sprite _currentSprite;
 
@@ -164,12 +165,20 @@ namespace PerfLab.Samples.MassHud
 
             _currentRoot = new GameObject(RuntimeRootName);
             Camera camera = CreateCamera(_currentRoot.transform);
-            CreateEnvironment(_currentRoot.transform);
 
             Shader depthShader = Resources.Load<Shader>("PerfLabHudDepthOnly");
             if (depthShader == null)
                 throw new InvalidOperationException("Missing Resources/PerfLabHudDepthOnly.shader");
             _currentDepthMaterial = new Material(depthShader) { name = "Mass HUD Shared Depth Material" };
+            Shader environmentShader = Shader.Find("Universal Render Pipeline/Unlit");
+            if (environmentShader == null)
+                throw new InvalidOperationException("URP Unlit shader is unavailable; verify that URP is active.");
+            _currentEnvironmentMaterial = new Material(environmentShader)
+            {
+                name = "Mass HUD Shared Environment Material"
+            };
+            _currentEnvironmentMaterial.SetColor("_BaseColor", new Color(0.32f, 0.35f, 0.34f, 1f));
+            CreateEnvironment(_currentRoot.transform);
             Font font = LoadBuiltinFont();
             var elements = new MassHudElement[count];
             bool perObjectUpdate = kind == MassHudKind.PerObjectCanvas;
@@ -454,6 +463,7 @@ namespace PerfLab.Samples.MassHud
             block.transform.SetParent(parent, false);
             block.transform.position = position;
             block.transform.localScale = scale;
+            block.GetComponent<MeshRenderer>().sharedMaterial = _currentEnvironmentMaterial;
         }
 
         private static Font LoadBuiltinFont()
@@ -480,6 +490,8 @@ namespace PerfLab.Samples.MassHud
                 UnityEngine.Object.Destroy(_currentDepthMaterial);
             if (_currentTextMaterial != null)
                 UnityEngine.Object.Destroy(_currentTextMaterial);
+            if (_currentEnvironmentMaterial != null)
+                UnityEngine.Object.Destroy(_currentEnvironmentMaterial);
             if (_currentSprite != null)
                 UnityEngine.Object.Destroy(_currentSprite);
             if (_currentSpriteTexture != null)
@@ -487,6 +499,7 @@ namespace PerfLab.Samples.MassHud
             _currentRoot = null;
             _currentDepthMaterial = null;
             _currentTextMaterial = null;
+            _currentEnvironmentMaterial = null;
             _currentSprite = null;
             _currentSpriteTexture = null;
         }

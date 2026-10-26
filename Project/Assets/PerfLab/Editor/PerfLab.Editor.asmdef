@@ -2,7 +2,8 @@
   "name": "PerfLab.Editor",
   "rootNamespace": "PerfLab.Editor",
   "references": [
-    "PerfLab.Runtime"
+    "PerfLab.Runtime",
+    "Unity.RenderPipelines.Universal.Runtime"
   ],
   "includePlatforms": [
     "Editor"

@@ -253,6 +253,8 @@ C# 会先计算方法实参，再进入 `Debug.Log` 或 `Debug.LogFormat` 检查
 
 目标是在同一画面显示大量怪物 HUD，并逐步从 World-space Canvas 演进到批量 GPU 渲染，同时保持墙体遮挡和 HUD 之间的前后遮挡正确。当前完成第 2 步，打开 `Assets/PerfLab/Scenes/MassHudCaseStudy.unity`：
 
+工程从本阶段起统一使用 URP 14 和 Universal Forward Renderer，并启用 SRP Batcher。迁移前 Built-in Render Pipeline 的历史结果只用于保留学习过程，不能与 URP 结果直接判定性能回归。
+
 - `0`：每个 HUD 拥有自己的 World-space Canvas 和 `Update`，并重复写入没有变化的名字；
 - `1`：保持完全相同的 Canvas 层级和画面，由一个 Manager 集中更新，名字只在初始化时赋值；
 - `2`：保持相同位置、血量动画和深度卡片，使用共享 Sprite 的 SpriteRenderer 血条和缓存的 3D TextMesh 名字；

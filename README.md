@@ -249,6 +249,21 @@ UGUI 属性赋值经常只设置脏标记，真正的 Layout、Graphic 和 Canva
 
 C# 会先计算方法实参，再进入 `Debug.Log` 或 `Debug.LogFormat` 检查日志是否启用。因此，关闭输出并不会自动消除调用点的字符串拼接；`params object[]` 还可能创建数组并装箱整数。调用前判断开关才会跳过这些准备工作。实验故意不连续输出真实日志，因为启用后的 Console、堆栈采集、Editor 界面和磁盘写入会主导结果，也可能让编辑器失去响应。
 
+## 综合案例 01：大量怪物名字与血条
+
+目标是在同一画面显示大量怪物 HUD，并逐步从 World-space Canvas 演进到批量 GPU 渲染，同时保持墙体遮挡和 HUD 之间的前后遮挡正确。当前完成第 1 步，打开 `Assets/PerfLab/Scenes/MassHudCaseStudy.unity`：
+
+- `0`：每个 HUD 拥有自己的 World-space Canvas 和 `Update`，并重复写入没有变化的名字；
+- `1`：保持完全相同的 Canvas 层级和画面，由一个 Manager 集中更新，名字只在初始化时赋值；
+- 左右方括号：切换 100、500 或 1,000 个 HUD；
+- `H`：隐藏 IMGUI，以便使用 Profiler 获取更干净的数据；
+- `E`：导出最后一次完整帧间隔结果。
+- 相机使用 `WASD` 移动、`Q/Space` 降低/升高、按住鼠标右键旋转、`Shift` 加速、`R` 恢复初始位置。
+
+每个 HUD 后方都有一张只写深度、不写颜色的卡片。场景不透明物体先写深度，近处 HUD 卡片也会阻止远处 HUD 通过深度测试，因此墙体和 HUD 之间都能形成前后遮挡。两个模式的 Renderer 和 Canvas 数量完全相同，第 1 步只比较分散回调、重复文字赋值与集中脏更新。当前使用稳定的占位玩家名；多语言字体回退、字形缓存和 Glyph Instancing 将在文字渲染步骤单独加入，避免与 Canvas 基线混测。
+
+后续会在同一个场景依次加入：共享材质的 SpriteRenderer/TMP 版本、Instanced 血条与缓存文字的混合版本，以及血条和多语言 Glyph 都采用实例化缓冲的目标版本。
+
 ## 运行
 
 1. 用 Unity Hub 打开 `Project` 目录。
@@ -258,15 +273,12 @@ C# 会先计算方法实参，再进入 `Debug.Log` 或 `Debug.LogFormat` 检查
 
 工程脚本避免使用较新的语法和 API，目标是兼容 Unity 2022.3 LTS 及 Unity 6。若本机安装的是其他编辑器版本，Unity Hub 可在首次打开时升级 `ProjectVersion.txt`。
 
-## 学习路线
+## 后续阶段
 
-1. Benchmark Harness（当前）
-2. `Update` 分发、集中式更新与数据布局
-3. 托管分配：装箱、闭包、LINQ 与字符串
-4. 物理查询：NonAlloc API、LayerMask 与规模曲线
-5. Jobs/Burst 的工作量交叉点
-6. 资源加载、GPU 上传与单帧尖峰
-7. 真机采样、性能预算与自动回归
+1. 综合 CPU 帧循环：从未优化实现逐级收敛到紧凑热数据；
+2. 渲染与 GPU：提交、批处理、Overdraw、RenderTexture 和同步点；
+3. 加载与内存：异步加载、资源驻留、峰值内存和场景切换；
+4. 真机回归：Player 自动运行、Profiler 采样、预算阈值与基线比较。
 
 ## 性能预算与回归判定
 

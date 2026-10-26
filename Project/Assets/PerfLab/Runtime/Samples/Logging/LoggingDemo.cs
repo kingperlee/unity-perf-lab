@@ -60,7 +60,7 @@ namespace PerfLab.Samples.Logging
             if (_harness.LastResult != null)
             {
                 var timing = _harness.LastResult.elapsedMilliseconds;
-                var allocation = _harness.LastResult.netAllocatedBytes;
+                var allocation = _harness.LastResult.allocatedBytes;
                 GUILayout.Label("Last: " + _harness.LastResult.scenario, _gui.Label);
                 GUILayout.Label($"Step P50/P95/P99: {timing.p50:F4} / {timing.p95:F4} / {timing.p99:F4} ms", _gui.Label);
                 GUILayout.Label($"Net allocation P50/P95/P99: {allocation.p50:F0} / {allocation.p95:F0} / {allocation.p99:F0} bytes", _gui.Label);

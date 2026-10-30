@@ -11,7 +11,8 @@ namespace PerfLab.Samples.MassHud
         PerObjectCanvas,
         CentralizedCanvas,
         SpriteRenderers,
-        GpuInstancedBars
+        GpuInstancedBars,
+        GpuInstancedGlyphs
     }
 
     internal sealed class MassHudScenario : IBenchmarkScenario
@@ -178,11 +179,12 @@ namespace PerfLab.Samples.MassHud
             Font font,
             Material textMaterial,
             Material depthMaterial,
-            Shader colorShader)
+            Shader colorShader,
+            bool createTextMeshes)
         {
             _camera = targetCamera;
             _anchors = anchors;
-            _nameTransforms = new Transform[anchors.Length];
+            _nameTransforms = createTextMeshes ? new Transform[anchors.Length] : null;
             _depthMatrices = new Matrix4x4[anchors.Length];
             _backgroundMatrices = new Matrix4x4[anchors.Length];
             _healthBackMatrices = new Matrix4x4[anchors.Length];
@@ -199,8 +201,11 @@ namespace PerfLab.Samples.MassHud
             _healthBackMaterial = CreateColorMaterial(colorShader, "Health Back", HealthBackColor, 3001);
             _healthFillMaterial = CreateColorMaterial(colorShader, "Health Fill", HealthFillColor, 3002);
 
-            for (int i = 0; i < anchors.Length; i++)
-                _nameTransforms[i] = CreateName(transform, font, textMaterial, anchors[i], i);
+            if (createTextMeshes)
+            {
+                for (int i = 0; i < anchors.Length; i++)
+                    _nameTransforms[i] = CreateName(transform, font, textMaterial, anchors[i], i);
+            }
 
             UpdateInstanceData(Time.unscaledTime);
         }
@@ -223,9 +228,12 @@ namespace PerfLab.Samples.MassHud
                 float health = 0.5f + 0.5f * Mathf.Sin(time * 1.7f + i * 0.173f);
                 float fillWidth = 2.4f * health;
 
-                _nameTransforms[i].SetPositionAndRotation(
-                    anchor + rotation * new Vector3(0f, 0.14f, -0.025f),
-                    rotation);
+                if (_nameTransforms != null)
+                {
+                    _nameTransforms[i].SetPositionAndRotation(
+                        anchor + rotation * new Vector3(0f, 0.14f, -0.025f),
+                        rotation);
+                }
                 _depthMatrices[i] = CreateMatrix(anchor, rotation, Vector3.zero, new Vector3(2.65f, 0.7f, 1f));
                 _backgroundMatrices[i] = CreateMatrix(anchor, rotation, new Vector3(0f, 0f, -0.01f), new Vector3(2.6f, 0.68f, 1f));
                 _healthBackMatrices[i] = CreateMatrix(anchor, rotation, new Vector3(0f, -0.18f, -0.015f), new Vector3(2.4f, 0.18f, 1f));
@@ -364,6 +372,7 @@ namespace PerfLab.Samples.MassHud
         private static Material _currentDepthMaterial;
         private static Material _currentTextMaterial;
         private static Material _currentEnvironmentMaterial;
+        private static Font _currentDynamicFont;
         private static Texture2D _currentSpriteTexture;
         private static Sprite _currentSprite;
 
@@ -387,7 +396,8 @@ namespace PerfLab.Samples.MassHud
             };
             _currentEnvironmentMaterial.SetColor("_BaseColor", new Color(0.32f, 0.35f, 0.34f, 1f));
             CreateEnvironment(_currentRoot.transform);
-            Font font = LoadBuiltinFont();
+            bool usesInstancedGlyphs = kind == MassHudKind.GpuInstancedGlyphs;
+            Font font = usesInstancedGlyphs ? LoadMultilingualFont() : LoadBuiltinFont();
             var elements = new MassHudElement[count];
             bool perObjectUpdate = kind == MassHudKind.PerObjectCanvas;
             bool usesTextMesh = kind == MassHudKind.SpriteRenderers || kind == MassHudKind.GpuInstancedBars;
@@ -405,7 +415,7 @@ namespace PerfLab.Samples.MassHud
                 };
             }
 
-            if (kind == MassHudKind.GpuInstancedBars)
+            if (kind == MassHudKind.GpuInstancedBars || kind == MassHudKind.GpuInstancedGlyphs)
             {
                 Shader colorShader = Resources.Load<Shader>("PerfLabHudInstancedColor");
                 if (colorShader == null)
@@ -419,7 +429,19 @@ namespace PerfLab.Samples.MassHud
                     font,
                     _currentTextMaterial,
                     _currentDepthMaterial,
-                    colorShader);
+                    colorShader,
+                    kind == MassHudKind.GpuInstancedBars);
+                if (usesInstancedGlyphs)
+                {
+                    Shader glyphShader = Resources.Load<Shader>("PerfLabHudInstancedGlyph");
+                    if (glyphShader == null)
+                        throw new InvalidOperationException("Missing Resources/PerfLabHudInstancedGlyph.shader");
+                    _currentRoot.AddComponent<MassHudGlyphInstancedRenderer>().Initialize(
+                        camera,
+                        anchors,
+                        font,
+                        glyphShader);
+                }
                 return Array.Empty<MassHudElement>();
             }
 
@@ -714,6 +736,23 @@ namespace PerfLab.Samples.MassHud
             return Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         }
 
+        private static Font LoadMultilingualFont()
+        {
+            string[] candidates =
+            {
+                "Microsoft YaHei",
+                "Yu Gothic UI",
+                "Malgun Gothic",
+                "Noto Sans CJK SC",
+                "PingFang SC",
+                "Arial Unicode MS",
+                "Segoe UI",
+                "Arial"
+            };
+            _currentDynamicFont = Font.CreateDynamicFontFromOSFont(candidates, 64);
+            return _currentDynamicFont != null ? _currentDynamicFont : LoadBuiltinFont();
+        }
+
         private static void RetirePreviousScene()
         {
             if (_currentRoot == null) return;
@@ -729,12 +768,15 @@ namespace PerfLab.Samples.MassHud
                 UnityEngine.Object.Destroy(_currentSprite);
             if (_currentSpriteTexture != null)
                 UnityEngine.Object.Destroy(_currentSpriteTexture);
+            if (_currentDynamicFont != null)
+                UnityEngine.Object.Destroy(_currentDynamicFont);
             _currentRoot = null;
             _currentDepthMaterial = null;
             _currentTextMaterial = null;
             _currentEnvironmentMaterial = null;
             _currentSprite = null;
             _currentSpriteTexture = null;
+            _currentDynamicFont = null;
         }
     }
 }

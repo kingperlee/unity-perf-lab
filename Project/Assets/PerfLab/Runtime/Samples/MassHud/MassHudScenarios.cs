@@ -1,6 +1,7 @@
 using System;
 using PerfLab.Benchmarking;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.UI;
 
 namespace PerfLab.Samples.MassHud
@@ -9,7 +10,8 @@ namespace PerfLab.Samples.MassHud
     {
         PerObjectCanvas,
         CentralizedCanvas,
-        SpriteRenderers
+        SpriteRenderers,
+        GpuInstancedBars
     }
 
     internal sealed class MassHudScenario : IBenchmarkScenario
@@ -149,6 +151,212 @@ namespace PerfLab.Samples.MassHud
         }
     }
 
+    internal sealed class MassHudInstancedRenderer : MonoBehaviour
+    {
+        private const int MaxInstancesPerDraw = 1023;
+        private static readonly Color BackgroundColor = new Color(0.03f, 0.03f, 0.03f, 0.92f);
+        private static readonly Color HealthBackColor = new Color(0.18f, 0.04f, 0.04f, 1f);
+        private static readonly Color HealthFillColor = new Color(0.15f, 0.9f, 0.25f, 1f);
+
+        private Camera _camera;
+        private Vector3[] _anchors;
+        private Transform[] _nameTransforms;
+        private Matrix4x4[] _depthMatrices;
+        private Matrix4x4[] _backgroundMatrices;
+        private Matrix4x4[] _healthBackMatrices;
+        private Matrix4x4[] _healthFillMatrices;
+        private Matrix4x4[] _drawBuffer;
+        private Mesh _quadMesh;
+        private Material _depthMaterial;
+        private Material _backgroundMaterial;
+        private Material _healthBackMaterial;
+        private Material _healthFillMaterial;
+
+        public void Initialize(
+            Camera targetCamera,
+            Vector3[] anchors,
+            Font font,
+            Material textMaterial,
+            Material depthMaterial,
+            Shader colorShader)
+        {
+            _camera = targetCamera;
+            _anchors = anchors;
+            _nameTransforms = new Transform[anchors.Length];
+            _depthMatrices = new Matrix4x4[anchors.Length];
+            _backgroundMatrices = new Matrix4x4[anchors.Length];
+            _healthBackMatrices = new Matrix4x4[anchors.Length];
+            _healthFillMatrices = new Matrix4x4[anchors.Length];
+            _drawBuffer = new Matrix4x4[Mathf.Min(MaxInstancesPerDraw, anchors.Length)];
+            _quadMesh = CreateQuadMesh();
+
+            _depthMaterial = new Material(depthMaterial)
+            {
+                name = "Mass HUD Instanced Depth Material",
+                enableInstancing = true
+            };
+            _backgroundMaterial = CreateColorMaterial(colorShader, "Background", BackgroundColor, 3000);
+            _healthBackMaterial = CreateColorMaterial(colorShader, "Health Back", HealthBackColor, 3001);
+            _healthFillMaterial = CreateColorMaterial(colorShader, "Health Fill", HealthFillColor, 3002);
+
+            for (int i = 0; i < anchors.Length; i++)
+                _nameTransforms[i] = CreateName(transform, font, textMaterial, anchors[i], i);
+
+            UpdateInstanceData(Time.unscaledTime);
+        }
+
+        private void LateUpdate()
+        {
+            UpdateInstanceData(Time.unscaledTime);
+            Draw(_depthMatrices, _depthMaterial);
+            Draw(_backgroundMatrices, _backgroundMaterial);
+            Draw(_healthBackMatrices, _healthBackMaterial);
+            Draw(_healthFillMatrices, _healthFillMaterial);
+        }
+
+        private void UpdateInstanceData(float time)
+        {
+            Quaternion rotation = _camera.transform.rotation;
+            for (int i = 0; i < _anchors.Length; i++)
+            {
+                Vector3 anchor = _anchors[i];
+                float health = 0.5f + 0.5f * Mathf.Sin(time * 1.7f + i * 0.173f);
+                float fillWidth = 2.4f * health;
+
+                _nameTransforms[i].SetPositionAndRotation(
+                    anchor + rotation * new Vector3(0f, 0.14f, -0.025f),
+                    rotation);
+                _depthMatrices[i] = CreateMatrix(anchor, rotation, Vector3.zero, new Vector3(2.65f, 0.7f, 1f));
+                _backgroundMatrices[i] = CreateMatrix(anchor, rotation, new Vector3(0f, 0f, -0.01f), new Vector3(2.6f, 0.68f, 1f));
+                _healthBackMatrices[i] = CreateMatrix(anchor, rotation, new Vector3(0f, -0.18f, -0.015f), new Vector3(2.4f, 0.18f, 1f));
+                _healthFillMatrices[i] = CreateMatrix(
+                    anchor,
+                    rotation,
+                    new Vector3(-1.2f + fillWidth * 0.5f, -0.18f, -0.02f),
+                    new Vector3(fillWidth, 0.18f, 1f));
+            }
+        }
+
+        private void Draw(Matrix4x4[] matrices, Material material)
+        {
+            if (matrices.Length <= MaxInstancesPerDraw)
+            {
+                Graphics.DrawMeshInstanced(
+                    _quadMesh,
+                    0,
+                    material,
+                    matrices,
+                    matrices.Length,
+                    null,
+                    ShadowCastingMode.Off,
+                    false,
+                    gameObject.layer,
+                    _camera,
+                    LightProbeUsage.Off);
+                return;
+            }
+
+            for (int offset = 0; offset < matrices.Length; offset += MaxInstancesPerDraw)
+            {
+                int count = Mathf.Min(MaxInstancesPerDraw, matrices.Length - offset);
+                Array.Copy(matrices, offset, _drawBuffer, 0, count);
+                Graphics.DrawMeshInstanced(
+                    _quadMesh,
+                    0,
+                    material,
+                    _drawBuffer,
+                    count,
+                    null,
+                    ShadowCastingMode.Off,
+                    false,
+                    gameObject.layer,
+                    _camera,
+                    LightProbeUsage.Off);
+            }
+        }
+
+        private static Matrix4x4 CreateMatrix(
+            Vector3 anchor,
+            Quaternion rotation,
+            Vector3 localPosition,
+            Vector3 localScale)
+        {
+            return Matrix4x4.TRS(anchor + rotation * localPosition, rotation, localScale);
+        }
+
+        private static Transform CreateName(
+            Transform parent,
+            Font font,
+            Material textMaterial,
+            Vector3 anchor,
+            int index)
+        {
+            var nameObject = new GameObject("Name " + index);
+            nameObject.transform.SetParent(parent, false);
+            nameObject.transform.position = anchor;
+            var label = nameObject.AddComponent<TextMesh>();
+            label.font = font;
+            label.fontSize = 32;
+            label.characterSize = 0.06f;
+            label.anchor = TextAnchor.MiddleCenter;
+            label.alignment = TextAlignment.Center;
+            label.color = Color.white;
+            label.text = "Player " + index + "  Lv." + (1 + index % 99);
+            MeshRenderer renderer = nameObject.GetComponent<MeshRenderer>();
+            renderer.sharedMaterial = textMaterial;
+            renderer.sortingOrder = 3;
+            return nameObject.transform;
+        }
+
+        private static Material CreateColorMaterial(
+            Shader shader,
+            string label,
+            Color color,
+            int renderQueue)
+        {
+            var material = new Material(shader)
+            {
+                name = "Mass HUD Instanced " + label + " Material",
+                color = color,
+                enableInstancing = true,
+                renderQueue = renderQueue
+            };
+            return material;
+        }
+
+        private static Mesh CreateQuadMesh()
+        {
+            var mesh = new Mesh { name = "Mass HUD Instanced Quad" };
+            mesh.vertices = new[]
+            {
+                new Vector3(-0.5f, -0.5f, 0f),
+                new Vector3(0.5f, -0.5f, 0f),
+                new Vector3(0.5f, 0.5f, 0f),
+                new Vector3(-0.5f, 0.5f, 0f)
+            };
+            mesh.uv = new[]
+            {
+                new Vector2(0f, 0f),
+                new Vector2(1f, 0f),
+                new Vector2(1f, 1f),
+                new Vector2(0f, 1f)
+            };
+            mesh.triangles = new[] { 0, 2, 1, 0, 3, 2 };
+            mesh.RecalculateBounds();
+            mesh.UploadMeshData(true);
+            return mesh;
+        }
+
+        private void OnDestroy()
+        {
+            Destroy(_quadMesh);
+            Destroy(_depthMaterial);
+            Destroy(_backgroundMaterial);
+            Destroy(_healthBackMaterial);
+            Destroy(_healthFillMaterial);
+        }
+    }
+
     internal static class MassHudSceneFactory
     {
         private const string RuntimeRootName = "Mass HUD Runtime";
@@ -182,9 +390,11 @@ namespace PerfLab.Samples.MassHud
             Font font = LoadBuiltinFont();
             var elements = new MassHudElement[count];
             bool perObjectUpdate = kind == MassHudKind.PerObjectCanvas;
+            bool usesTextMesh = kind == MassHudKind.SpriteRenderers || kind == MassHudKind.GpuInstancedBars;
             if (kind == MassHudKind.SpriteRenderers)
-            {
                 CreateRuntimeSprite();
+            if (usesTextMesh)
+            {
                 Shader textShader = Resources.Load<Shader>("PerfLabHudText");
                 if (textShader == null)
                     throw new InvalidOperationException("Missing Resources/PerfLabHudText.shader");
@@ -195,15 +405,27 @@ namespace PerfLab.Samples.MassHud
                 };
             }
 
-            const int columns = 25;
+            if (kind == MassHudKind.GpuInstancedBars)
+            {
+                Shader colorShader = Resources.Load<Shader>("PerfLabHudInstancedColor");
+                if (colorShader == null)
+                    throw new InvalidOperationException("Missing Resources/PerfLabHudInstancedColor.shader");
+                var anchors = new Vector3[count];
+                for (int i = 0; i < count; i++)
+                    anchors[i] = GetAnchor(i);
+                _currentRoot.AddComponent<MassHudInstancedRenderer>().Initialize(
+                    camera,
+                    anchors,
+                    font,
+                    _currentTextMaterial,
+                    _currentDepthMaterial,
+                    colorShader);
+                return Array.Empty<MassHudElement>();
+            }
+
             for (int i = 0; i < count; i++)
             {
-                int column = i % columns;
-                int row = i / columns;
-                float x = (column - (columns - 1) * 0.5f) * 1.55f;
-                float y = 1.5f + (i % 7) * 0.08f;
-                float z = 5f + row * 1.45f;
-                Vector3 anchor = new Vector3(x, y, z);
+                Vector3 anchor = GetAnchor(i);
                 elements[i] = kind == MassHudKind.SpriteRenderers
                     ? CreateSpriteHud(
                         _currentRoot.transform,
@@ -226,6 +448,17 @@ namespace PerfLab.Samples.MassHud
                 _currentRoot.AddComponent<MassHudCentralUpdater>().Initialize(elements);
 
             return elements;
+        }
+
+        private static Vector3 GetAnchor(int index)
+        {
+            const int columns = 25;
+            int column = index % columns;
+            int row = index / columns;
+            float x = (column - (columns - 1) * 0.5f) * 1.55f;
+            float y = 1.5f + (index % 7) * 0.08f;
+            float z = 5f + row * 1.45f;
+            return new Vector3(x, y, z);
         }
 
         private static MassHudElement CreateCanvasHud(

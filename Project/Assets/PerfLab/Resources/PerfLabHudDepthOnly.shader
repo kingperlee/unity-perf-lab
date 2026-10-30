@@ -19,11 +19,13 @@ Shader "PerfLab/HudDepthOnly"
             HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
+            #pragma multi_compile_instancing
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
             struct appdata
             {
                 float4 positionOS : POSITION;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
             struct v2f
@@ -33,6 +35,7 @@ Shader "PerfLab/HudDepthOnly"
 
             v2f vert(appdata input)
             {
+                UNITY_SETUP_INSTANCE_ID(input);
                 v2f output;
                 output.positionHCS = TransformObjectToHClip(input.positionOS.xyz);
                 return output;

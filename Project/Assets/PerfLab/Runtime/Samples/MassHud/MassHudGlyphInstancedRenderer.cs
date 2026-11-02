@@ -16,6 +16,7 @@ namespace PerfLab.Samples.MassHud
 
         private struct GlyphInstance
         {
+            public int hudIndex;
             public Vector3 anchor;
             public Vector2 localCenter;
             public Vector2 size;
@@ -25,8 +26,10 @@ namespace PerfLab.Samples.MassHud
 
         private sealed class GlyphBatch
         {
-            public int sourceOffset;
+            public int count;
             public Matrix4x4[] matrices;
+            public Vector4[] uvBottom;
+            public Vector4[] uvTop;
             public MaterialPropertyBlock properties;
         }
 
@@ -37,10 +40,18 @@ namespace PerfLab.Samples.MassHud
         private Mesh _quadMesh;
         private Quaternion _lastCameraRotation;
         private bool _hasCameraRotation;
+        private MassHudVisibilityCuller _visibilityCuller;
+        private int _lastVisibilityVersion = -1;
 
-        public void Initialize(Camera targetCamera, Vector3[] anchors, Font font, Shader glyphShader)
+        public void Initialize(
+            Camera targetCamera,
+            Vector3[] anchors,
+            Font font,
+            Shader glyphShader,
+            MassHudVisibilityCuller visibilityCuller)
         {
             _camera = targetCamera;
+            _visibilityCuller = visibilityCuller;
             string[] names = BuildNames(anchors.Length);
             PrewarmFont(font, names);
             font.material.mainTexture.filterMode = FilterMode.Bilinear;
@@ -67,23 +78,42 @@ namespace PerfLab.Samples.MassHud
         private void UpdateMatrices()
         {
             Quaternion rotation = _camera.transform.rotation;
-            if (_hasCameraRotation && Mathf.Abs(Quaternion.Dot(rotation, _lastCameraRotation)) > 0.999999f)
+            int visibilityVersion = _visibilityCuller != null ? _visibilityCuller.Version : 0;
+            if (_hasCameraRotation &&
+                visibilityVersion == _lastVisibilityVersion &&
+                Mathf.Abs(Quaternion.Dot(rotation, _lastCameraRotation)) > 0.999999f)
                 return;
 
             _lastCameraRotation = rotation;
+            _lastVisibilityVersion = visibilityVersion;
             _hasCameraRotation = true;
-            for (int batchIndex = 0; batchIndex < _batches.Length; batchIndex++)
+            for (int i = 0; i < _batches.Length; i++)
+                _batches[i].count = 0;
+
+            int visibleGlyphIndex = 0;
+            for (int glyphIndex = 0; glyphIndex < _glyphs.Length; glyphIndex++)
             {
-                GlyphBatch batch = _batches[batchIndex];
-                for (int i = 0; i < batch.matrices.Length; i++)
-                {
-                    GlyphInstance glyph = _glyphs[batch.sourceOffset + i];
-                    Vector3 localPosition = new Vector3(glyph.localCenter.x, glyph.localCenter.y, -0.025f);
-                    batch.matrices[i] = Matrix4x4.TRS(
-                        glyph.anchor + rotation * localPosition,
-                        rotation,
-                        new Vector3(glyph.size.x, glyph.size.y, 1f));
-                }
+                GlyphInstance glyph = _glyphs[glyphIndex];
+                if (_visibilityCuller != null && !_visibilityCuller.IsVisible(glyph.hudIndex))
+                    continue;
+
+                GlyphBatch batch = _batches[visibleGlyphIndex / MaxInstancesPerDraw];
+                int destination = visibleGlyphIndex % MaxInstancesPerDraw;
+                Vector3 localPosition = new Vector3(glyph.localCenter.x, glyph.localCenter.y, -0.025f);
+                batch.matrices[destination] = Matrix4x4.TRS(
+                    glyph.anchor + rotation * localPosition,
+                    rotation,
+                    new Vector3(glyph.size.x, glyph.size.y, 1f));
+                batch.uvBottom[destination] = glyph.uvBottom;
+                batch.uvTop[destination] = glyph.uvTop;
+                batch.count++;
+                visibleGlyphIndex++;
+            }
+
+            for (int i = 0; i < _batches.Length && _batches[i].count > 0; i++)
+            {
+                _batches[i].properties.SetVectorArray(GlyphUvBottomId, _batches[i].uvBottom);
+                _batches[i].properties.SetVectorArray(GlyphUvTopId, _batches[i].uvTop);
             }
         }
 
@@ -92,12 +122,13 @@ namespace PerfLab.Samples.MassHud
             for (int i = 0; i < _batches.Length; i++)
             {
                 GlyphBatch batch = _batches[i];
+                if (batch.count == 0) break;
                 Graphics.DrawMeshInstanced(
                     _quadMesh,
                     0,
                     _material,
                     batch.matrices,
-                    batch.matrices.Length,
+                    batch.count,
                     batch.properties,
                     ShadowCastingMode.Off,
                     false,
@@ -113,24 +144,12 @@ namespace PerfLab.Samples.MassHud
             var batches = new GlyphBatch[batchCount];
             for (int batchIndex = 0; batchIndex < batchCount; batchIndex++)
             {
-                int offset = batchIndex * MaxInstancesPerDraw;
-                int count = Mathf.Min(MaxInstancesPerDraw, glyphs.Length - offset);
-                var uvBottom = new Vector4[count];
-                var uvTop = new Vector4[count];
-                for (int i = 0; i < count; i++)
-                {
-                    GlyphInstance glyph = glyphs[offset + i];
-                    uvBottom[i] = glyph.uvBottom;
-                    uvTop[i] = glyph.uvTop;
-                }
-
                 var properties = new MaterialPropertyBlock();
-                properties.SetVectorArray(GlyphUvBottomId, uvBottom);
-                properties.SetVectorArray(GlyphUvTopId, uvTop);
                 batches[batchIndex] = new GlyphBatch
                 {
-                    sourceOffset = offset,
-                    matrices = new Matrix4x4[count],
+                    matrices = new Matrix4x4[MaxInstancesPerDraw],
+                    uvBottom = new Vector4[MaxInstancesPerDraw],
+                    uvTop = new Vector4[MaxInstancesPerDraw],
                     properties = properties
                 };
             }
@@ -206,6 +225,7 @@ namespace PerfLab.Samples.MassHud
                     {
                         glyphs.Add(new GlyphInstance
                         {
+                            hudIndex = i,
                             anchor = anchors[i],
                             localCenter = new Vector2(
                                 (cursor + (info.minX + info.maxX) * 0.5f) * unitsPerPixel,

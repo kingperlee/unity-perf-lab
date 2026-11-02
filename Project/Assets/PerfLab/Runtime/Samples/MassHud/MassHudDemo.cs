@@ -32,6 +32,7 @@ namespace PerfLab.Samples.MassHud
             if (Input.GetKeyDown(KeyCode.Alpha2)) Run(MassHudKind.SpriteRenderers);
             if (Input.GetKeyDown(KeyCode.Alpha3)) Run(MassHudKind.GpuInstancedBars);
             if (Input.GetKeyDown(KeyCode.Alpha4)) Run(MassHudKind.GpuInstancedGlyphs);
+            if (Input.GetKeyDown(KeyCode.Alpha5)) Run(MassHudKind.GpuInstancedGlyphsCulled);
             if (Input.GetKeyDown(KeyCode.E) && _harness.LastResult != null)
                 _exportStatus = "Exported: " + BenchmarkResultExporter.Export(_harness.LastResult);
         }
@@ -42,13 +43,14 @@ namespace PerfLab.Samples.MassHud
             _gui.EnsureCreated();
             GUILayout.BeginArea(_gui.GetPanelRect(790f), _gui.Box);
             _scrollPosition = GUILayout.BeginScrollView(_scrollPosition);
-            GUILayout.Label("Mass HUD case study · Step 4: GPU-instanced glyphs", _gui.Title);
+            GUILayout.Label("Mass HUD case study · Step 5: CPU frustum culling", _gui.Title);
             GUILayout.Space(8f);
             GUILayout.Label("[0] One Update + naive assignments per HUD Canvas", _gui.Label);
             GUILayout.Label("[1] One manager + cached unchanged text", _gui.Label);
             GUILayout.Label("[2] SpriteRenderer bars + cached 3D TextMesh names", _gui.Label);
             GUILayout.Label("[3] GPU-instanced depth/bars + unchanged 3D TextMesh names", _gui.Label);
             GUILayout.Label("[4] GPU-instanced depth/bars + multilingual glyph atlas", _gui.Label);
+            GUILayout.Label("[5] Mode 4 + centralized allocation-free frustum culling", _gui.Label);
             GUILayout.Label("Left bracket / Right bracket: 100, 500, or 1,000 HUDs", _gui.Label);
             GUILayout.Label("[H] Hide overlay for cleaner profiling   [E] Export result", _gui.Label);
             GUILayout.Label("Camera: WASD move, Q/Space down/up, hold right mouse to look, Shift boost, R reset", _gui.Label);
@@ -66,8 +68,8 @@ namespace PerfLab.Samples.MassHud
             if (!string.IsNullOrEmpty(_exportStatus)) GUILayout.Label(_exportStatus, _gui.Label);
             GUILayout.Space(8f);
             GUILayout.Label(
-                "Modes 0 and 1 use world-space Canvas. Mode 2 uses SpriteRenderers and automatic batching. Mode 3 instances the rectangles but retains one TextMesh per name. Mode 4 prewarms a multilingual runtime font atlas and instances each visible glyph. " +
-                "Missing glyphs fall back to '?'. Complex-script shaping remains a separate text-layout concern. Walls and nearer HUD cards use the same depth rule in every mode.",
+                "Mode 4 instances rectangles and multilingual glyphs. Mode 5 tests every HUD anchor against the camera frustum, then compacts only visible rectangles and glyphs into draw buffers. " +
+                "Distance alone never hides a HUD: anything inside the frustum remains eligible, while depth still handles walls and nearer cards. Culling storage is reused without per-frame allocation.",
                 _gui.Label);
             GUILayout.EndScrollView();
             GUILayout.EndArea();

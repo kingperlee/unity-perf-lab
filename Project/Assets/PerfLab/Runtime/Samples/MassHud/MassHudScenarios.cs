@@ -12,7 +12,8 @@ namespace PerfLab.Samples.MassHud
         CentralizedCanvas,
         SpriteRenderers,
         GpuInstancedBars,
-        GpuInstancedGlyphs
+        GpuInstancedGlyphs,
+        GpuInstancedGlyphsCulled
     }
 
     internal sealed class MassHudScenario : IBenchmarkScenario
@@ -172,6 +173,7 @@ namespace PerfLab.Samples.MassHud
         private Material _backgroundMaterial;
         private Material _healthBackMaterial;
         private Material _healthFillMaterial;
+        private MassHudVisibilityCuller _visibilityCuller;
 
         public void Initialize(
             Camera targetCamera,
@@ -180,10 +182,12 @@ namespace PerfLab.Samples.MassHud
             Material textMaterial,
             Material depthMaterial,
             Shader colorShader,
-            bool createTextMeshes)
+            bool createTextMeshes,
+            MassHudVisibilityCuller visibilityCuller)
         {
             _camera = targetCamera;
             _anchors = anchors;
+            _visibilityCuller = visibilityCuller;
             _nameTransforms = createTextMeshes ? new Transform[anchors.Length] : null;
             _depthMatrices = new Matrix4x4[anchors.Length];
             _backgroundMatrices = new Matrix4x4[anchors.Length];
@@ -212,18 +216,21 @@ namespace PerfLab.Samples.MassHud
 
         private void LateUpdate()
         {
-            UpdateInstanceData(Time.unscaledTime);
-            Draw(_depthMatrices, _depthMaterial);
-            Draw(_backgroundMatrices, _backgroundMaterial);
-            Draw(_healthBackMatrices, _healthBackMaterial);
-            Draw(_healthFillMatrices, _healthFillMaterial);
+            int visibleCount = UpdateInstanceData(Time.unscaledTime);
+            Draw(_depthMatrices, visibleCount, _depthMaterial);
+            Draw(_backgroundMatrices, visibleCount, _backgroundMaterial);
+            Draw(_healthBackMatrices, visibleCount, _healthBackMaterial);
+            Draw(_healthFillMatrices, visibleCount, _healthFillMaterial);
         }
 
-        private void UpdateInstanceData(float time)
+        private int UpdateInstanceData(float time)
         {
             Quaternion rotation = _camera.transform.rotation;
+            int destination = 0;
             for (int i = 0; i < _anchors.Length; i++)
             {
+                if (_visibilityCuller != null && !_visibilityCuller.IsVisible(i))
+                    continue;
                 Vector3 anchor = _anchors[i];
                 float health = 0.5f + 0.5f * Mathf.Sin(time * 1.7f + i * 0.173f);
                 float fillWidth = 2.4f * health;
@@ -234,27 +241,30 @@ namespace PerfLab.Samples.MassHud
                         anchor + rotation * new Vector3(0f, 0.14f, -0.025f),
                         rotation);
                 }
-                _depthMatrices[i] = CreateMatrix(anchor, rotation, Vector3.zero, new Vector3(2.65f, 0.7f, 1f));
-                _backgroundMatrices[i] = CreateMatrix(anchor, rotation, new Vector3(0f, 0f, -0.01f), new Vector3(2.6f, 0.68f, 1f));
-                _healthBackMatrices[i] = CreateMatrix(anchor, rotation, new Vector3(0f, -0.18f, -0.015f), new Vector3(2.4f, 0.18f, 1f));
-                _healthFillMatrices[i] = CreateMatrix(
+                _depthMatrices[destination] = CreateMatrix(anchor, rotation, Vector3.zero, new Vector3(2.65f, 0.7f, 1f));
+                _backgroundMatrices[destination] = CreateMatrix(anchor, rotation, new Vector3(0f, 0f, -0.01f), new Vector3(2.6f, 0.68f, 1f));
+                _healthBackMatrices[destination] = CreateMatrix(anchor, rotation, new Vector3(0f, -0.18f, -0.015f), new Vector3(2.4f, 0.18f, 1f));
+                _healthFillMatrices[destination] = CreateMatrix(
                     anchor,
                     rotation,
                     new Vector3(-1.2f + fillWidth * 0.5f, -0.18f, -0.02f),
                     new Vector3(fillWidth, 0.18f, 1f));
+                destination++;
             }
+            return destination;
         }
 
-        private void Draw(Matrix4x4[] matrices, Material material)
+        private void Draw(Matrix4x4[] matrices, int matrixCount, Material material)
         {
-            if (matrices.Length <= MaxInstancesPerDraw)
+            if (matrixCount == 0) return;
+            if (matrixCount <= MaxInstancesPerDraw)
             {
                 Graphics.DrawMeshInstanced(
                     _quadMesh,
                     0,
                     material,
                     matrices,
-                    matrices.Length,
+                    matrixCount,
                     null,
                     ShadowCastingMode.Off,
                     false,
@@ -264,9 +274,9 @@ namespace PerfLab.Samples.MassHud
                 return;
             }
 
-            for (int offset = 0; offset < matrices.Length; offset += MaxInstancesPerDraw)
+            for (int offset = 0; offset < matrixCount; offset += MaxInstancesPerDraw)
             {
-                int count = Mathf.Min(MaxInstancesPerDraw, matrices.Length - offset);
+                int count = Mathf.Min(MaxInstancesPerDraw, matrixCount - offset);
                 Array.Copy(matrices, offset, _drawBuffer, 0, count);
                 Graphics.DrawMeshInstanced(
                     _quadMesh,
@@ -396,7 +406,8 @@ namespace PerfLab.Samples.MassHud
             };
             _currentEnvironmentMaterial.SetColor("_BaseColor", new Color(0.32f, 0.35f, 0.34f, 1f));
             CreateEnvironment(_currentRoot.transform);
-            bool usesInstancedGlyphs = kind == MassHudKind.GpuInstancedGlyphs;
+            bool usesInstancedGlyphs = kind == MassHudKind.GpuInstancedGlyphs ||
+                                       kind == MassHudKind.GpuInstancedGlyphsCulled;
             Font font = usesInstancedGlyphs ? LoadMultilingualFont() : LoadBuiltinFont();
             var elements = new MassHudElement[count];
             bool perObjectUpdate = kind == MassHudKind.PerObjectCanvas;
@@ -415,7 +426,7 @@ namespace PerfLab.Samples.MassHud
                 };
             }
 
-            if (kind == MassHudKind.GpuInstancedBars || kind == MassHudKind.GpuInstancedGlyphs)
+            if (kind == MassHudKind.GpuInstancedBars || usesInstancedGlyphs)
             {
                 Shader colorShader = Resources.Load<Shader>("PerfLabHudInstancedColor");
                 if (colorShader == null)
@@ -423,6 +434,12 @@ namespace PerfLab.Samples.MassHud
                 var anchors = new Vector3[count];
                 for (int i = 0; i < count; i++)
                     anchors[i] = GetAnchor(i);
+                MassHudVisibilityCuller visibilityCuller = null;
+                if (kind == MassHudKind.GpuInstancedGlyphsCulled)
+                {
+                    visibilityCuller = _currentRoot.AddComponent<MassHudVisibilityCuller>();
+                    visibilityCuller.Initialize(camera, anchors);
+                }
                 _currentRoot.AddComponent<MassHudInstancedRenderer>().Initialize(
                     camera,
                     anchors,
@@ -430,7 +447,8 @@ namespace PerfLab.Samples.MassHud
                     _currentTextMaterial,
                     _currentDepthMaterial,
                     colorShader,
-                    kind == MassHudKind.GpuInstancedBars);
+                    kind == MassHudKind.GpuInstancedBars,
+                    visibilityCuller);
                 if (usesInstancedGlyphs)
                 {
                     Shader glyphShader = Resources.Load<Shader>("PerfLabHudInstancedGlyph");
@@ -440,7 +458,8 @@ namespace PerfLab.Samples.MassHud
                         camera,
                         anchors,
                         font,
-                        glyphShader);
+                        glyphShader,
+                        visibilityCuller);
                 }
                 return Array.Empty<MassHudElement>();
             }

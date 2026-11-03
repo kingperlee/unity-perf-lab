@@ -14,7 +14,8 @@ namespace PerfLab.Samples.MassHud
         GpuInstancedBars,
         GpuInstancedGlyphs,
         GpuInstancedGlyphsCulled,
-        GpuInstancedGlyphsLod
+        GpuInstancedGlyphsLod,
+        GpuCompositeHud
     }
 
     internal sealed class MassHudScenario : IBenchmarkScenario
@@ -160,6 +161,7 @@ namespace PerfLab.Samples.MassHud
         private static readonly Color BackgroundColor = new Color(0.03f, 0.03f, 0.03f, 0.92f);
         private static readonly Color HealthBackColor = new Color(0.18f, 0.04f, 0.04f, 1f);
         private static readonly Color HealthFillColor = new Color(0.15f, 0.9f, 0.25f, 1f);
+        private static readonly int HealthId = Shader.PropertyToID("_Health01");
 
         private Camera _camera;
         private Vector3[] _anchors;
@@ -174,11 +176,15 @@ namespace PerfLab.Samples.MassHud
         private Material _backgroundMaterial;
         private Material _healthBackMaterial;
         private Material _healthFillMaterial;
+        private Material _compositeMaterial;
+        private MaterialPropertyBlock _compositeProperties;
         private MassHudVisibilityCuller _visibilityCuller;
         private bool _useLodUpdates;
         private float[] _cachedFillWidths;
         private Quaternion _lastCameraRotation;
         private bool _hasCameraRotation;
+        private bool _useCompositeHud;
+        private float[] _healthValues;
 
         public void Initialize(
             Camera targetCamera,
@@ -187,20 +193,24 @@ namespace PerfLab.Samples.MassHud
             Material textMaterial,
             Material depthMaterial,
             Shader colorShader,
+            Shader compositeShader,
             bool createTextMeshes,
             MassHudVisibilityCuller visibilityCuller,
-            bool useLodUpdates)
+            bool useLodUpdates,
+            bool useCompositeHud)
         {
             _camera = targetCamera;
             _anchors = anchors;
             _visibilityCuller = visibilityCuller;
             _useLodUpdates = useLodUpdates;
+            _useCompositeHud = useCompositeHud;
             _nameTransforms = createTextMeshes ? new Transform[anchors.Length] : null;
             _depthMatrices = new Matrix4x4[anchors.Length];
             _backgroundMatrices = new Matrix4x4[anchors.Length];
             _healthBackMatrices = new Matrix4x4[anchors.Length];
             _healthFillMatrices = new Matrix4x4[anchors.Length];
             _cachedFillWidths = new float[anchors.Length];
+            _healthValues = useCompositeHud ? new float[anchors.Length] : null;
             _drawBuffer = new Matrix4x4[Mathf.Min(MaxInstancesPerDraw, anchors.Length)];
             _quadMesh = CreateQuadMesh();
 
@@ -212,6 +222,16 @@ namespace PerfLab.Samples.MassHud
             _backgroundMaterial = CreateColorMaterial(colorShader, "Background", BackgroundColor, 3000);
             _healthBackMaterial = CreateColorMaterial(colorShader, "Health Back", HealthBackColor, 3001);
             _healthFillMaterial = CreateColorMaterial(colorShader, "Health Fill", HealthFillColor, 3002);
+            if (useCompositeHud)
+            {
+                _compositeMaterial = new Material(compositeShader)
+                {
+                    name = "Mass HUD Composite Material",
+                    enableInstancing = true,
+                    renderQueue = 3000
+                };
+                _compositeProperties = new MaterialPropertyBlock();
+            }
 
             if (createTextMeshes)
             {
@@ -231,9 +251,17 @@ namespace PerfLab.Samples.MassHud
             {
                 UpdateLodData(Time.unscaledTime, Time.frameCount);
                 Draw(_depthMatrices, _anchors.Length, _depthMaterial);
-                Draw(_backgroundMatrices, _anchors.Length, _backgroundMaterial);
-                Draw(_healthBackMatrices, _anchors.Length, _healthBackMaterial);
-                Draw(_healthFillMatrices, _anchors.Length, _healthFillMaterial);
+                if (_useCompositeHud)
+                {
+                    _compositeProperties.SetFloatArray(HealthId, _healthValues);
+                    Draw(_backgroundMatrices, _anchors.Length, _compositeMaterial, _compositeProperties);
+                }
+                else
+                {
+                    Draw(_backgroundMatrices, _anchors.Length, _backgroundMaterial);
+                    Draw(_healthBackMatrices, _anchors.Length, _healthBackMaterial);
+                    Draw(_healthFillMatrices, _anchors.Length, _healthFillMaterial);
+                }
                 return;
             }
 
@@ -283,8 +311,10 @@ namespace PerfLab.Samples.MassHud
             for (int i = 0; i < _anchors.Length; i++)
             {
                 _cachedFillWidths[i] = CalculateFillWidth(time, i);
+                if (_healthValues != null) _healthValues[i] = _cachedFillWidths[i] / 2.4f;
                 UpdateStaticMatrices(i, rotation);
-                UpdateFillMatrix(i, rotation, _cachedFillWidths[i]);
+                if (!_useCompositeHud)
+                    UpdateFillMatrix(i, rotation, _cachedFillWidths[i]);
             }
         }
 
@@ -300,7 +330,8 @@ namespace PerfLab.Samples.MassHud
                 for (int i = 0; i < _anchors.Length; i++)
                 {
                     UpdateStaticMatrices(i, rotation);
-                    UpdateFillMatrix(i, rotation, _cachedFillWidths[i]);
+                    if (!_useCompositeHud)
+                        UpdateFillMatrix(i, rotation, _cachedFillWidths[i]);
                 }
             }
 
@@ -311,7 +342,9 @@ namespace PerfLab.Samples.MassHud
                 if ((frame + i) % interval != 0) continue;
                 float fillWidth = CalculateFillWidth(time, i);
                 _cachedFillWidths[i] = fillWidth;
-                UpdateFillMatrix(i, rotation, fillWidth);
+                if (_healthValues != null) _healthValues[i] = fillWidth / 2.4f;
+                if (!_useCompositeHud)
+                    UpdateFillMatrix(i, rotation, fillWidth);
             }
         }
 
@@ -320,7 +353,8 @@ namespace PerfLab.Samples.MassHud
             Vector3 anchor = _anchors[index];
             _depthMatrices[index] = CreateMatrix(anchor, rotation, Vector3.zero, new Vector3(2.65f, 0.7f, 1f));
             _backgroundMatrices[index] = CreateMatrix(anchor, rotation, new Vector3(0f, 0f, -0.01f), new Vector3(2.6f, 0.68f, 1f));
-            _healthBackMatrices[index] = CreateMatrix(anchor, rotation, new Vector3(0f, -0.18f, -0.015f), new Vector3(2.4f, 0.18f, 1f));
+            if (!_useCompositeHud)
+                _healthBackMatrices[index] = CreateMatrix(anchor, rotation, new Vector3(0f, -0.18f, -0.015f), new Vector3(2.4f, 0.18f, 1f));
         }
 
         private void UpdateFillMatrix(int index, Quaternion rotation, float fillWidth)
@@ -344,7 +378,11 @@ namespace PerfLab.Samples.MassHud
             return 12;
         }
 
-        private void Draw(Matrix4x4[] matrices, int matrixCount, Material material)
+        private void Draw(
+            Matrix4x4[] matrices,
+            int matrixCount,
+            Material material,
+            MaterialPropertyBlock properties = null)
         {
             if (matrixCount == 0) return;
             if (matrixCount <= MaxInstancesPerDraw)
@@ -355,7 +393,7 @@ namespace PerfLab.Samples.MassHud
                     material,
                     matrices,
                     matrixCount,
-                    null,
+                    properties,
                     ShadowCastingMode.Off,
                     false,
                     gameObject.layer,
@@ -374,7 +412,7 @@ namespace PerfLab.Samples.MassHud
                     material,
                     _drawBuffer,
                     count,
-                    null,
+                    properties,
                     ShadowCastingMode.Off,
                     false,
                     gameObject.layer,
@@ -462,6 +500,7 @@ namespace PerfLab.Samples.MassHud
             Destroy(_backgroundMaterial);
             Destroy(_healthBackMaterial);
             Destroy(_healthFillMaterial);
+            Destroy(_compositeMaterial);
         }
     }
 
@@ -498,7 +537,8 @@ namespace PerfLab.Samples.MassHud
             CreateEnvironment(_currentRoot.transform);
             bool usesInstancedGlyphs = kind == MassHudKind.GpuInstancedGlyphs ||
                                        kind == MassHudKind.GpuInstancedGlyphsCulled ||
-                                       kind == MassHudKind.GpuInstancedGlyphsLod;
+                                       kind == MassHudKind.GpuInstancedGlyphsLod ||
+                                       kind == MassHudKind.GpuCompositeHud;
             Font font = usesInstancedGlyphs ? LoadMultilingualFont() : LoadBuiltinFont();
             var elements = new MassHudElement[count];
             bool perObjectUpdate = kind == MassHudKind.PerObjectCanvas;
@@ -522,6 +562,13 @@ namespace PerfLab.Samples.MassHud
                 Shader colorShader = Resources.Load<Shader>("PerfLabHudInstancedColor");
                 if (colorShader == null)
                     throw new InvalidOperationException("Missing Resources/PerfLabHudInstancedColor.shader");
+                Shader compositeShader = null;
+                if (kind == MassHudKind.GpuCompositeHud)
+                {
+                    compositeShader = Resources.Load<Shader>("PerfLabHudComposite");
+                    if (compositeShader == null)
+                        throw new InvalidOperationException("Missing Resources/PerfLabHudComposite.shader");
+                }
                 var anchors = new Vector3[count];
                 for (int i = 0; i < count; i++)
                     anchors[i] = GetAnchor(i);
@@ -538,9 +585,11 @@ namespace PerfLab.Samples.MassHud
                     _currentTextMaterial,
                     _currentDepthMaterial,
                     colorShader,
+                    compositeShader,
                     kind == MassHudKind.GpuInstancedBars,
                     visibilityCuller,
-                    kind == MassHudKind.GpuInstancedGlyphsLod);
+                    kind == MassHudKind.GpuInstancedGlyphsLod || kind == MassHudKind.GpuCompositeHud,
+                    kind == MassHudKind.GpuCompositeHud);
                 if (usesInstancedGlyphs)
                 {
                     Shader glyphShader = Resources.Load<Shader>("PerfLabHudInstancedGlyph");

@@ -34,6 +34,7 @@ namespace PerfLab.Samples.MassHud
             if (Input.GetKeyDown(KeyCode.Alpha4)) Run(MassHudKind.GpuInstancedGlyphs);
             if (Input.GetKeyDown(KeyCode.Alpha5)) Run(MassHudKind.GpuInstancedGlyphsCulled);
             if (Input.GetKeyDown(KeyCode.Alpha6)) Run(MassHudKind.GpuInstancedGlyphsLod);
+            if (Input.GetKeyDown(KeyCode.Alpha7)) Run(MassHudKind.GpuCompositeHud);
             if (Input.GetKeyDown(KeyCode.E) && _harness.LastResult != null)
                 _exportStatus = "Exported: " + BenchmarkResultExporter.Export(_harness.LastResult);
         }
@@ -44,7 +45,7 @@ namespace PerfLab.Samples.MassHud
             _gui.EnsureCreated();
             GUILayout.BeginArea(_gui.GetPanelRect(790f), _gui.Box);
             _scrollPosition = GUILayout.BeginScrollView(_scrollPosition);
-            GUILayout.Label("Mass HUD case study · Step 6: update-rate LOD", _gui.Title);
+            GUILayout.Label("Mass HUD case study · Step 7: composite HUD shader", _gui.Title);
             GUILayout.Space(8f);
             GUILayout.Label("[0] One Update + naive assignments per HUD Canvas", _gui.Label);
             GUILayout.Label("[1] One manager + cached unchanged text", _gui.Label);
@@ -53,6 +54,7 @@ namespace PerfLab.Samples.MassHud
             GUILayout.Label("[4] GPU-instanced depth/bars + multilingual glyph atlas", _gui.Label);
             GUILayout.Label("[5] Mode 4 + centralized allocation-free frustum culling", _gui.Label);
             GUILayout.Label("[6] Mode 4 + dirty static data + staggered distance update rates", _gui.Label);
+            GUILayout.Label("[7] Mode 6 + one shader-generated background/health quad", _gui.Label);
             GUILayout.Label("Left bracket / Right bracket: 100, 500, or 1,000 HUDs", _gui.Label);
             GUILayout.Label("[H] Hide overlay for cleaner profiling   [E] Export result", _gui.Label);
             GUILayout.Label("Camera: WASD move, Q/Space down/up, hold right mouse to look, Shift boost, R reset", _gui.Label);
@@ -70,8 +72,8 @@ namespace PerfLab.Samples.MassHud
             if (!string.IsNullOrEmpty(_exportStatus)) GUILayout.Label(_exportStatus, _gui.Label);
             GUILayout.Space(8f);
             GUILayout.Label(
-                "Mode 5 demonstrates that culling has overhead when everything is visible. Mode 6 keeps every HUD visible but rebuilds static billboard rectangles only after camera rotation changes. " +
-                "Animated health fills use staggered 1/4/12-frame update rates by distance, spreading work across frames without changing draw count or depth behavior.",
+                "Mode 7 keeps Mode 6's update-rate LOD, but replaces three transparent rectangle layers with one instanced quad. Its fragment shader generates the background, health back and fill from an instanced health value. " +
+                "Depth and multilingual glyphs remain separate, so compare Batches, render-thread time and overdraw with Mode 6.",
                 _gui.Label);
             GUILayout.EndScrollView();
             GUILayout.EndArea();

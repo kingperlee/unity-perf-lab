@@ -42,6 +42,7 @@ namespace PerfLab.Samples.MassHud
         private bool _hasCameraRotation;
         private MassHudVisibilityCuller _visibilityCuller;
         private int _lastVisibilityVersion = -1;
+        private bool _initialized;
 
         public void Initialize(
             Camera targetCamera,
@@ -67,10 +68,12 @@ namespace PerfLab.Samples.MassHud
             };
             _material.SetColor("_Color", Color.white);
             UpdateMatrices();
+            _initialized = true;
         }
 
         private void LateUpdate()
         {
+            if (!_initialized) return;
             UpdateMatrices();
             DrawGlyphs();
         }
@@ -285,6 +288,7 @@ namespace PerfLab.Samples.MassHud
 
         private void OnDestroy()
         {
+            _initialized = false;
             Destroy(_quadMesh);
             Destroy(_material);
         }

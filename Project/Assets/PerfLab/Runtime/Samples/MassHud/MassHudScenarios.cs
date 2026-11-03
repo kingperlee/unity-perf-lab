@@ -15,7 +15,8 @@ namespace PerfLab.Samples.MassHud
         GpuInstancedGlyphs,
         GpuInstancedGlyphsCulled,
         GpuInstancedGlyphsLod,
-        GpuCompositeHud
+        GpuCompositeHud,
+        PooledDamagePopups
     }
 
     internal sealed class MassHudScenario : IBenchmarkScenario
@@ -185,6 +186,7 @@ namespace PerfLab.Samples.MassHud
         private bool _hasCameraRotation;
         private bool _useCompositeHud;
         private float[] _healthValues;
+        private bool _initialized;
 
         public void Initialize(
             Camera targetCamera,
@@ -243,10 +245,12 @@ namespace PerfLab.Samples.MassHud
                 InitializeLodData(Time.unscaledTime);
             else
                 UpdateInstanceData(Time.unscaledTime);
+            _initialized = true;
         }
 
         private void LateUpdate()
         {
+            if (!_initialized) return;
             if (_useLodUpdates)
             {
                 UpdateLodData(Time.unscaledTime, Time.frameCount);
@@ -495,6 +499,7 @@ namespace PerfLab.Samples.MassHud
 
         private void OnDestroy()
         {
+            _initialized = false;
             Destroy(_quadMesh);
             Destroy(_depthMaterial);
             Destroy(_backgroundMaterial);
@@ -538,7 +543,8 @@ namespace PerfLab.Samples.MassHud
             bool usesInstancedGlyphs = kind == MassHudKind.GpuInstancedGlyphs ||
                                        kind == MassHudKind.GpuInstancedGlyphsCulled ||
                                        kind == MassHudKind.GpuInstancedGlyphsLod ||
-                                       kind == MassHudKind.GpuCompositeHud;
+                                       kind == MassHudKind.GpuCompositeHud ||
+                                       kind == MassHudKind.PooledDamagePopups;
             Font font = usesInstancedGlyphs ? LoadMultilingualFont() : LoadBuiltinFont();
             var elements = new MassHudElement[count];
             bool perObjectUpdate = kind == MassHudKind.PerObjectCanvas;
@@ -563,7 +569,9 @@ namespace PerfLab.Samples.MassHud
                 if (colorShader == null)
                     throw new InvalidOperationException("Missing Resources/PerfLabHudInstancedColor.shader");
                 Shader compositeShader = null;
-                if (kind == MassHudKind.GpuCompositeHud)
+                bool usesCompositeHud = kind == MassHudKind.GpuCompositeHud ||
+                                        kind == MassHudKind.PooledDamagePopups;
+                if (usesCompositeHud)
                 {
                     compositeShader = Resources.Load<Shader>("PerfLabHudComposite");
                     if (compositeShader == null)
@@ -588,8 +596,8 @@ namespace PerfLab.Samples.MassHud
                     compositeShader,
                     kind == MassHudKind.GpuInstancedBars,
                     visibilityCuller,
-                    kind == MassHudKind.GpuInstancedGlyphsLod || kind == MassHudKind.GpuCompositeHud,
-                    kind == MassHudKind.GpuCompositeHud);
+                    kind == MassHudKind.GpuInstancedGlyphsLod || usesCompositeHud,
+                    usesCompositeHud);
                 if (usesInstancedGlyphs)
                 {
                     Shader glyphShader = Resources.Load<Shader>("PerfLabHudInstancedGlyph");
@@ -601,6 +609,14 @@ namespace PerfLab.Samples.MassHud
                         font,
                         glyphShader,
                         visibilityCuller);
+                    if (kind == MassHudKind.PooledDamagePopups)
+                    {
+                        _currentRoot.AddComponent<MassHudDamagePopupRenderer>().Initialize(
+                            camera,
+                            anchors,
+                            font,
+                            glyphShader);
+                    }
                 }
                 return Array.Empty<MassHudElement>();
             }

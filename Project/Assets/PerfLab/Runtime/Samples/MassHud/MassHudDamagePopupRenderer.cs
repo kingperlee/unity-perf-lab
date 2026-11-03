@@ -13,6 +13,7 @@ namespace PerfLab.Samples.MassHud
         private const float SpawnRatePerSecond = 120f;
         private static readonly int GlyphUvBottomId = Shader.PropertyToID("_GlyphUvBottom");
         private static readonly int GlyphUvTopId = Shader.PropertyToID("_GlyphUvTop");
+        private static readonly int PopupTimingId = Shader.PropertyToID("_PopupTiming");
         private static readonly int[] PowersOfTen = { 1, 10, 100, 1000 };
 
         private struct Popup
@@ -40,6 +41,7 @@ namespace PerfLab.Samples.MassHud
             public readonly Matrix4x4[] matrices = new Matrix4x4[MaxInstancesPerDraw];
             public readonly Vector4[] uvBottom = new Vector4[MaxInstancesPerDraw];
             public readonly Vector4[] uvTop = new Vector4[MaxInstancesPerDraw];
+            public readonly Vector4[] timing = new Vector4[MaxInstancesPerDraw];
             public readonly MaterialPropertyBlock properties = new MaterialPropertyBlock();
         }
 
@@ -54,11 +56,25 @@ namespace PerfLab.Samples.MassHud
         private int _spawnSequence;
         private float _spawnAccumulator;
         private bool _initialized;
+        private bool _gpuAnimated;
+        private Vector2[] _gpuLocalCenters;
+        private Vector2[] _gpuSizes;
+        private int[] _gpuHudIndices;
+        private bool[] _gpuGlyphUsed;
+        private Quaternion _lastCameraRotation;
+        private bool _hasCameraRotation;
+        private bool _gpuPropertiesDirty;
 
-        public void Initialize(Camera targetCamera, Vector3[] anchors, Font font, Shader glyphShader)
+        public void Initialize(
+            Camera targetCamera,
+            Vector3[] anchors,
+            Font font,
+            Shader glyphShader,
+            bool gpuAnimated)
         {
             _camera = targetCamera;
             _anchors = anchors;
+            _gpuAnimated = gpuAnimated;
             _pool = new Popup[PoolCapacity];
             font.RequestCharactersInTexture("0123456789", FontSize, FontStyle.Normal);
             _digits = BuildDigitGlyphs(font);
@@ -66,6 +82,14 @@ namespace PerfLab.Samples.MassHud
             _batches = new DrawBatch[Mathf.CeilToInt(maxGlyphs / (float)MaxInstancesPerDraw)];
             for (int i = 0; i < _batches.Length; i++)
                 _batches[i] = new DrawBatch();
+            if (gpuAnimated)
+            {
+                _gpuLocalCenters = new Vector2[maxGlyphs];
+                _gpuSizes = new Vector2[maxGlyphs];
+                _gpuHudIndices = new int[maxGlyphs];
+                _gpuGlyphUsed = new bool[maxGlyphs];
+                InitializeGpuSlots(maxGlyphs);
+            }
             _quadMesh = CreateQuadMesh();
             _material = new Material(glyphShader)
             {
@@ -81,8 +105,17 @@ namespace PerfLab.Samples.MassHud
         private void LateUpdate()
         {
             if (!_initialized) return;
-            SpawnByElapsedTime(Time.unscaledDeltaTime, Time.unscaledTime);
-            BuildActiveGlyphs(Time.unscaledTime);
+            float animationTime = _gpuAnimated ? Time.time : Time.unscaledTime;
+            SpawnByElapsedTime(Time.unscaledDeltaTime, animationTime);
+            if (_gpuAnimated)
+            {
+                UpdateGpuBillboardsIfNeeded();
+                FlushGpuPropertiesIfNeeded();
+            }
+            else
+            {
+                BuildActiveGlyphs(animationTime);
+            }
             DrawActiveGlyphs();
         }
 
@@ -99,7 +132,8 @@ namespace PerfLab.Samples.MassHud
         {
             int sequence = _spawnSequence;
             _spawnSequence = (_spawnSequence + 1) % 9990;
-            _pool[_spawnCursor] = new Popup
+            int slot = _spawnCursor;
+            _pool[slot] = new Popup
             {
                 active = true,
                 hudIndex = sequence % _anchors.Length,
@@ -108,7 +142,114 @@ namespace PerfLab.Samples.MassHud
                 duration = 1.15f,
                 lateralOffset = ((sequence % 7) - 3) * 0.055f
             };
+            if (_gpuAnimated)
+                CacheGpuPopup(slot, _pool[slot]);
             _spawnCursor = (_spawnCursor + 1) % _pool.Length;
+        }
+
+        private void InitializeGpuSlots(int maxGlyphs)
+        {
+            DigitGlyph fallback = _digits[0];
+            for (int globalIndex = 0; globalIndex < maxGlyphs; globalIndex++)
+            {
+                GetBatchLocation(globalIndex, out DrawBatch batch, out int destination);
+                batch.count++;
+                batch.matrices[destination] = Matrix4x4.TRS(
+                    Vector3.zero,
+                    Quaternion.identity,
+                    Vector3.one * 0.001f);
+                batch.uvBottom[destination] = fallback.uvBottom;
+                batch.uvTop[destination] = fallback.uvTop;
+                batch.timing[destination] = Vector4.zero;
+            }
+            _gpuPropertiesDirty = true;
+        }
+
+        private void CacheGpuPopup(int slot, Popup popup)
+        {
+            int digitCount = CountDigits(popup.value);
+            float totalAdvance = 0f;
+            for (int position = 0; position < digitCount; position++)
+                totalAdvance += _digits[GetDigit(popup.value, digitCount, position)].advance;
+
+            float cursor = -totalAdvance * 0.5f;
+            Quaternion rotation = _camera.transform.rotation;
+            for (int position = 0; position < MaxDigits; position++)
+            {
+                int globalIndex = slot * MaxDigits + position;
+                GetBatchLocation(globalIndex, out DrawBatch batch, out int destination);
+                if (position >= digitCount)
+                {
+                    _gpuGlyphUsed[globalIndex] = false;
+                    batch.timing[destination] = Vector4.zero;
+                    continue;
+                }
+
+                DigitGlyph digit = _digits[GetDigit(popup.value, digitCount, position)];
+                _gpuGlyphUsed[globalIndex] = true;
+                _gpuHudIndices[globalIndex] = popup.hudIndex;
+                _gpuLocalCenters[globalIndex] = new Vector2(
+                    popup.lateralOffset + cursor + digit.center.x,
+                    0.58f + digit.center.y);
+                _gpuSizes[globalIndex] = digit.size;
+                batch.matrices[destination] = CreateGpuGlyphMatrix(globalIndex, rotation);
+                batch.uvBottom[destination] = digit.uvBottom;
+                batch.uvTop[destination] = digit.uvTop;
+                batch.timing[destination] = new Vector4(
+                    popup.startTime,
+                    popup.duration,
+                    1.1f / Mathf.Max(digit.size.y, 0.0001f),
+                    0f);
+                cursor += digit.advance;
+            }
+            _gpuPropertiesDirty = true;
+        }
+
+        private void UpdateGpuBillboardsIfNeeded()
+        {
+            Quaternion rotation = _camera.transform.rotation;
+            if (_hasCameraRotation &&
+                Mathf.Abs(Quaternion.Dot(rotation, _lastCameraRotation)) > 0.999999f)
+                return;
+
+            _lastCameraRotation = rotation;
+            _hasCameraRotation = true;
+            for (int globalIndex = 0; globalIndex < _gpuGlyphUsed.Length; globalIndex++)
+            {
+                if (!_gpuGlyphUsed[globalIndex]) continue;
+                GetBatchLocation(globalIndex, out DrawBatch batch, out int destination);
+                batch.matrices[destination] = CreateGpuGlyphMatrix(globalIndex, rotation);
+            }
+        }
+
+        private Matrix4x4 CreateGpuGlyphMatrix(int globalIndex, Quaternion rotation)
+        {
+            Vector2 center = _gpuLocalCenters[globalIndex];
+            Vector2 size = _gpuSizes[globalIndex];
+            Vector3 localPosition = new Vector3(center.x, center.y, -0.035f);
+            return Matrix4x4.TRS(
+                _anchors[_gpuHudIndices[globalIndex]] + rotation * localPosition,
+                rotation,
+                new Vector3(size.x, size.y, 1f));
+        }
+
+        private void FlushGpuPropertiesIfNeeded()
+        {
+            if (!_gpuPropertiesDirty) return;
+            for (int i = 0; i < _batches.Length; i++)
+            {
+                DrawBatch batch = _batches[i];
+                batch.properties.SetVectorArray(GlyphUvBottomId, batch.uvBottom);
+                batch.properties.SetVectorArray(GlyphUvTopId, batch.uvTop);
+                batch.properties.SetVectorArray(PopupTimingId, batch.timing);
+            }
+            _gpuPropertiesDirty = false;
+        }
+
+        private void GetBatchLocation(int globalIndex, out DrawBatch batch, out int destination)
+        {
+            batch = _batches[globalIndex / MaxInstancesPerDraw];
+            destination = globalIndex % MaxInstancesPerDraw;
         }
 
         private void BuildActiveGlyphs(float now)

@@ -16,7 +16,8 @@ namespace PerfLab.Samples.MassHud
         GpuInstancedGlyphsCulled,
         GpuInstancedGlyphsLod,
         GpuCompositeHud,
-        PooledDamagePopups
+        PooledDamagePopups,
+        GpuAnimatedDamagePopups
     }
 
     internal sealed class MassHudScenario : IBenchmarkScenario
@@ -544,7 +545,8 @@ namespace PerfLab.Samples.MassHud
                                        kind == MassHudKind.GpuInstancedGlyphsCulled ||
                                        kind == MassHudKind.GpuInstancedGlyphsLod ||
                                        kind == MassHudKind.GpuCompositeHud ||
-                                       kind == MassHudKind.PooledDamagePopups;
+                                       kind == MassHudKind.PooledDamagePopups ||
+                                       kind == MassHudKind.GpuAnimatedDamagePopups;
             Font font = usesInstancedGlyphs ? LoadMultilingualFont() : LoadBuiltinFont();
             var elements = new MassHudElement[count];
             bool perObjectUpdate = kind == MassHudKind.PerObjectCanvas;
@@ -570,7 +572,8 @@ namespace PerfLab.Samples.MassHud
                     throw new InvalidOperationException("Missing Resources/PerfLabHudInstancedColor.shader");
                 Shader compositeShader = null;
                 bool usesCompositeHud = kind == MassHudKind.GpuCompositeHud ||
-                                        kind == MassHudKind.PooledDamagePopups;
+                                        kind == MassHudKind.PooledDamagePopups ||
+                                        kind == MassHudKind.GpuAnimatedDamagePopups;
                 if (usesCompositeHud)
                 {
                     compositeShader = Resources.Load<Shader>("PerfLabHudComposite");
@@ -609,13 +612,21 @@ namespace PerfLab.Samples.MassHud
                         font,
                         glyphShader,
                         visibilityCuller);
-                    if (kind == MassHudKind.PooledDamagePopups)
+                    if (kind == MassHudKind.PooledDamagePopups ||
+                        kind == MassHudKind.GpuAnimatedDamagePopups)
                     {
+                        bool gpuAnimated = kind == MassHudKind.GpuAnimatedDamagePopups;
+                        Shader damageShader = gpuAnimated
+                            ? Resources.Load<Shader>("PerfLabHudDamageGlyph")
+                            : glyphShader;
+                        if (damageShader == null)
+                            throw new InvalidOperationException("Missing Resources/PerfLabHudDamageGlyph.shader");
                         _currentRoot.AddComponent<MassHudDamagePopupRenderer>().Initialize(
                             camera,
                             anchors,
                             font,
-                            glyphShader);
+                            damageShader,
+                            gpuAnimated);
                     }
                 }
                 return Array.Empty<MassHudElement>();

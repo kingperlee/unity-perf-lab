@@ -36,6 +36,7 @@ namespace PerfLab.Samples.MassHud
             if (Input.GetKeyDown(KeyCode.Alpha6)) Run(MassHudKind.GpuInstancedGlyphsLod);
             if (Input.GetKeyDown(KeyCode.Alpha7)) Run(MassHudKind.GpuCompositeHud);
             if (Input.GetKeyDown(KeyCode.Alpha8)) Run(MassHudKind.PooledDamagePopups);
+            if (Input.GetKeyDown(KeyCode.Alpha9)) Run(MassHudKind.GpuAnimatedDamagePopups);
             if (Input.GetKeyDown(KeyCode.E) && _harness.LastResult != null)
                 _exportStatus = "Exported: " + BenchmarkResultExporter.Export(_harness.LastResult);
         }
@@ -46,7 +47,7 @@ namespace PerfLab.Samples.MassHud
             _gui.EnsureCreated();
             GUILayout.BeginArea(_gui.GetPanelRect(790f), _gui.Box);
             _scrollPosition = GUILayout.BeginScrollView(_scrollPosition);
-            GUILayout.Label("Mass HUD case study · Step 8: pooled damage popups", _gui.Title);
+            GUILayout.Label("Mass HUD case study · Step 9: GPU-animated damage", _gui.Title);
             GUILayout.Space(8f);
             GUILayout.Label("[0] One Update + naive assignments per HUD Canvas", _gui.Label);
             GUILayout.Label("[1] One manager + cached unchanged text", _gui.Label);
@@ -57,6 +58,7 @@ namespace PerfLab.Samples.MassHud
             GUILayout.Label("[6] Mode 4 + dirty static data + staggered distance update rates", _gui.Label);
             GUILayout.Label("[7] Mode 6 + one shader-generated background/health quad", _gui.Label);
             GUILayout.Label("[8] Mode 7 + fixed-pool instanced damage glyphs", _gui.Label);
+            GUILayout.Label("[9] Mode 8 + spawn-time layout + GPU rise/lifetime", _gui.Label);
             GUILayout.Label("Left bracket / Right bracket: 100, 500, or 1,000 HUDs", _gui.Label);
             GUILayout.Label("[H] Hide overlay for cleaner profiling   [E] Export result", _gui.Label);
             GUILayout.Label("Camera: WASD move, Q/Space down/up, hold right mouse to look, Shift boost, R reset", _gui.Label);
@@ -74,8 +76,8 @@ namespace PerfLab.Samples.MassHud
             if (!string.IsNullOrEmpty(_exportStatus)) GUILayout.Label(_exportStatus, _gui.Label);
             GUILayout.Space(8f);
             GUILayout.Label(
-                "Mode 8 adds continuously spawned damage numbers using 256 reusable data slots. No popup GameObjects or runtime strings are created; active digits are compacted into preallocated instancing batches, rise for a fixed lifetime, then return to the pool. " +
-                "This isolates the steady-state CPU and rendering cost of damage text from Instantiate/Destroy and GC noise.",
+                "Mode 9 keeps the fixed popup pool but caches digit layout when a popup spawns. Matrices remain stable until camera rotation changes; the vertex shader derives vertical motion from spawn time, and expired glyphs are clipped on the GPU. " +
+                "It trades a fixed maximum glyph submission for much less per-frame CPU traversal and matrix work.",
                 _gui.Label);
             GUILayout.EndScrollView();
             GUILayout.EndArea();

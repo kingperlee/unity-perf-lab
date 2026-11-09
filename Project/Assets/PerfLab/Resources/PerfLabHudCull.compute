@@ -1,0 +1,19 @@
+#pragma kernel CullHuds
+
+StructuredBuffer<float4> _AllHuds;
+AppendStructuredBuffer<float4> _VisibleHuds;
+float4x4 _ViewProjection;
+int _HudCount;
+
+[numthreads(64, 1, 1)]
+void CullHuds(uint id : SV_DispatchThreadID)
+{
+    if (id >= (uint)_HudCount) return;
+    float4 hud = _AllHuds[id];
+    float4 clip = mul(_ViewProjection, float4(hud.xyz, 1.0));
+    bool visible = clip.w > 0.0 &&
+                   abs(clip.x) <= clip.w * 1.08 &&
+                   abs(clip.y) <= clip.w * 1.08 &&
+                   clip.z >= 0.0 && clip.z <= clip.w;
+    if (visible) _VisibleHuds.Append(hud);
+}

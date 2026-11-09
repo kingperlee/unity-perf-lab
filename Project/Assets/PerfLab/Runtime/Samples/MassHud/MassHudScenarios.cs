@@ -17,7 +17,8 @@ namespace PerfLab.Samples.MassHud
         GpuInstancedGlyphsLod,
         GpuCompositeHud,
         PooledDamagePopups,
-        GpuAnimatedDamagePopups
+        GpuAnimatedDamagePopups,
+        GpuIndirectHud
     }
 
     internal sealed class MassHudScenario : IBenchmarkScenario
@@ -546,7 +547,8 @@ namespace PerfLab.Samples.MassHud
                                        kind == MassHudKind.GpuInstancedGlyphsLod ||
                                        kind == MassHudKind.GpuCompositeHud ||
                                        kind == MassHudKind.PooledDamagePopups ||
-                                       kind == MassHudKind.GpuAnimatedDamagePopups;
+                                       kind == MassHudKind.GpuAnimatedDamagePopups ||
+                                       kind == MassHudKind.GpuIndirectHud;
             Font font = usesInstancedGlyphs ? LoadMultilingualFont() : LoadBuiltinFont();
             var elements = new MassHudElement[count];
             bool perObjectUpdate = kind == MassHudKind.PerObjectCanvas;
@@ -573,7 +575,8 @@ namespace PerfLab.Samples.MassHud
                 Shader compositeShader = null;
                 bool usesCompositeHud = kind == MassHudKind.GpuCompositeHud ||
                                         kind == MassHudKind.PooledDamagePopups ||
-                                        kind == MassHudKind.GpuAnimatedDamagePopups;
+                                        kind == MassHudKind.GpuAnimatedDamagePopups ||
+                                        kind == MassHudKind.GpuIndirectHud;
                 if (usesCompositeHud)
                 {
                     compositeShader = Resources.Load<Shader>("PerfLabHudComposite");
@@ -589,18 +592,33 @@ namespace PerfLab.Samples.MassHud
                     visibilityCuller = _currentRoot.AddComponent<MassHudVisibilityCuller>();
                     visibilityCuller.Initialize(camera, anchors);
                 }
-                _currentRoot.AddComponent<MassHudInstancedRenderer>().Initialize(
-                    camera,
-                    anchors,
-                    font,
-                    _currentTextMaterial,
-                    _currentDepthMaterial,
-                    colorShader,
-                    compositeShader,
-                    kind == MassHudKind.GpuInstancedBars,
-                    visibilityCuller,
-                    kind == MassHudKind.GpuInstancedGlyphsLod || usesCompositeHud,
-                    usesCompositeHud);
+                if (kind == MassHudKind.GpuIndirectHud)
+                {
+                    if (!SystemInfo.supportsComputeShaders)
+                        throw new InvalidOperationException("Mode 10 requires compute shader support.");
+                    ComputeShader cullShader = Resources.Load<ComputeShader>("PerfLabHudCull");
+                    Shader indirectDepthShader = Resources.Load<Shader>("PerfLabHudIndirectDepth");
+                    Shader indirectCompositeShader = Resources.Load<Shader>("PerfLabHudIndirectComposite");
+                    if (cullShader == null || indirectDepthShader == null || indirectCompositeShader == null)
+                        throw new InvalidOperationException("Missing Mass HUD indirect rendering resources.");
+                    _currentRoot.AddComponent<MassHudIndirectRenderer>().Initialize(
+                        camera, anchors, cullShader, indirectDepthShader, indirectCompositeShader);
+                }
+                else
+                {
+                    _currentRoot.AddComponent<MassHudInstancedRenderer>().Initialize(
+                        camera,
+                        anchors,
+                        font,
+                        _currentTextMaterial,
+                        _currentDepthMaterial,
+                        colorShader,
+                        compositeShader,
+                        kind == MassHudKind.GpuInstancedBars,
+                        visibilityCuller,
+                        kind == MassHudKind.GpuInstancedGlyphsLod || usesCompositeHud,
+                        usesCompositeHud);
+                }
                 if (usesInstancedGlyphs)
                 {
                     Shader glyphShader = Resources.Load<Shader>("PerfLabHudInstancedGlyph");
@@ -613,9 +631,11 @@ namespace PerfLab.Samples.MassHud
                         glyphShader,
                         visibilityCuller);
                     if (kind == MassHudKind.PooledDamagePopups ||
-                        kind == MassHudKind.GpuAnimatedDamagePopups)
+                        kind == MassHudKind.GpuAnimatedDamagePopups ||
+                        kind == MassHudKind.GpuIndirectHud)
                     {
-                        bool gpuAnimated = kind == MassHudKind.GpuAnimatedDamagePopups;
+                        bool gpuAnimated = kind == MassHudKind.GpuAnimatedDamagePopups ||
+                                           kind == MassHudKind.GpuIndirectHud;
                         Shader damageShader = gpuAnimated
                             ? Resources.Load<Shader>("PerfLabHudDamageGlyph")
                             : glyphShader;
